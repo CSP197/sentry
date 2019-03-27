@@ -15,6 +15,7 @@ import PermissionAlert from 'app/views/settings/organization/permissionAlert';
 import ProviderRow from 'app/views/organizationIntegrations/providerRow';
 import SettingsPageHeader from 'app/views/settings/components/settingsPageHeader';
 import SentryAppInstallations from 'app/views/organizationIntegrations/sentryAppInstallations';
+import SentryTypes from 'app/sentryTypes';
 import withOrganization from 'app/utils/withOrganization';
 
 class OrganizationIntegrations extends AsyncComponent {
@@ -23,6 +24,10 @@ class OrganizationIntegrations extends AsyncComponent {
   shouldReload = true;
   reloadOnVisible = true;
   shouldReloadOnVisible = true;
+
+  static propTypes = {
+    organization: SentryTypes.Organization,
+  };
 
   componentDidMount() {
     analytics('integrations.index_viewed', {
@@ -172,7 +177,7 @@ class OrganizationIntegrations extends AsyncComponent {
             {providers}
             {applications && (
               <SentryAppInstallations
-                orgId={this.props.params.orgId}
+                organization={this.props.organization}
                 installs={appInstalls}
                 applications={applications}
               />
