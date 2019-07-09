@@ -2,7 +2,7 @@ import PropTypes from 'prop-types';
 import React from 'react';
 import styled from 'react-emotion';
 import Avatar from 'app/components/avatar';
-import Link from 'app/components/link';
+import Link from 'app/components/links/link';
 import overflowEllipsis from 'app/styles/overflowEllipsis';
 import space from 'app/styles/space';
 import SentryTypes from 'app/sentryTypes';
@@ -87,9 +87,8 @@ const StyledEmail = styled('div')`
   ${overflowEllipsis};
 `;
 
-const StyledName = styled(
-  ({useLink, hideEmail, to, ...props}) =>
-    useLink ? <Link to={to} {...props} /> : <span {...props} />
+const StyledName = styled(({useLink, hideEmail, to, ...props}) =>
+  useLink ? <Link to={to} {...props} /> : <span {...props} />
 )`
   font-weight: ${p => (p.hideEmail ? 'inherit' : 'bold')};
   line-height: 1.15em;

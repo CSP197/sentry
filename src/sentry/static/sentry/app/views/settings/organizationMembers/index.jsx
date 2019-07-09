@@ -31,8 +31,8 @@ class OrganizationMembersView extends AsyncView {
 
   componentWillReceiveProps(nextProps, nextContext) {
     super.componentWillReceiveProps(nextProps, nextContext);
-    const searchQuery = nextProps?.location?.query?.query;
-    if (searchQuery !== this.props?.location?.query?.query) {
+    const searchQuery = nextProps.location.query.query;
+    if (searchQuery !== this.props.location.query.query) {
       this.setState({searchQuery});
     }
   }
@@ -46,7 +46,7 @@ class OrganizationMembersView extends AsyncView {
       members: [],
       invited: new Map(),
       accessRequestBusy: new Map(),
-      searchQuery: this.props?.location?.query?.query || '',
+      searchQuery: this.props.location.query.query || '',
     };
   }
 
@@ -57,7 +57,7 @@ class OrganizationMembersView extends AsyncView {
         `/organizations/${this.props.params.orgId}/members/`,
         {
           query: {
-            query: this.props?.location?.query?.query,
+            query: this.props.location.query.query,
           },
         },
         {paginate: true},
@@ -246,6 +246,7 @@ class OrganizationMembersView extends AsyncView {
         }
         to={recreateRoute('new/', {routes, params})}
         icon="icon-circle-add"
+        data-test-id="invite-member"
       >
         {t('Invite Member')}
       </Button>
@@ -270,7 +271,7 @@ class OrganizationMembersView extends AsyncView {
           requestList={requestList}
         />
 
-        <Panel>
+        <Panel data-test-id="org-member-list">
           <PanelHeader hasButtons>
             {t('Member')}
 

@@ -52,6 +52,7 @@ jest.mock('lodash/debounce', () => jest.fn(fn => fn));
 jest.mock('app/utils/recreateRoute');
 jest.mock('app/translations');
 jest.mock('app/api');
+jest.mock('app/utils/domId');
 jest.mock('app/utils/withOrganization');
 jest.mock('scroll-to-element', () => {});
 jest.mock('react-router', () => {
@@ -64,6 +65,7 @@ jest.mock('react-router', () => {
     Route: ReactRouter.Route,
     withRouter: ReactRouter.withRouter,
     browserHistory: {
+      goBack: jest.fn(),
       push: jest.fn(),
       replace: jest.fn(),
       listen: jest.fn(() => {}),
@@ -110,7 +112,23 @@ jest.mock('@sentry/browser', () => {
     captureException: jest.fn(),
     showReportDialog: jest.fn(),
     lastEventId: jest.fn(),
+    getCurrentHub: jest.spyOn(SentryBrowser, 'getCurrentHub'),
     withScope: jest.spyOn(SentryBrowser, 'withScope'),
+  };
+});
+
+jest.mock('popper.js', () => {
+  const PopperJS = jest.requireActual('popper.js');
+
+  return class {
+    static placements = PopperJS.placements;
+
+    constructor() {
+      return {
+        destroy: () => {},
+        scheduleUpdate: () => {},
+      };
+    }
   };
 });
 

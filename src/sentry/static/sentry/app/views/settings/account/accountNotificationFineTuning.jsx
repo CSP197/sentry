@@ -232,16 +232,18 @@ export default class AccountNotificationFineTuning extends AsyncView {
       return [];
     }
 
-    return emails.filter(({isVerified}) => isVerified).sort((a, b) => {
-      // Sort by primary -> email
-      if (a.isPrimary) {
-        return -1;
-      } else if (b.isPrimary) {
-        return 1;
-      }
+    return emails
+      .filter(({isVerified}) => isVerified)
+      .sort((a, b) => {
+        // Sort by primary -> email
+        if (a.isPrimary) {
+          return -1;
+        } else if (b.isPrimary) {
+          return 1;
+        }
 
-      return a.email < b.email ? -1 : 1;
-    });
+        return a.email < b.email ? -1 : 1;
+      });
   }
 
   renderBody() {
@@ -269,7 +271,7 @@ export default class AccountNotificationFineTuning extends AsyncView {
             <Form
               saveOnBlur
               apiMethod="PUT"
-              apiEndpoint={'/users/me/notifications/'}
+              apiEndpoint="/users/me/notifications/"
               initialData={this.state.notifications}
             >
               <JsonForm
@@ -298,16 +300,16 @@ export default class AccountNotificationFineTuning extends AsyncView {
                 </Box>
               </PanelHeader>
 
-              {isProject &&
-                hasProjects && (
-                  <AccountNotificationsByProject
-                    projects={this.state.projects}
-                    field={field}
-                  />
-                )}
+              {isProject && hasProjects && (
+                <AccountNotificationsByProject
+                  projects={this.state.projects}
+                  field={field}
+                />
+              )}
 
-              {isProject &&
-                !hasProjects && <EmptyMessage>{t('No projects found')}</EmptyMessage>}
+              {isProject && !hasProjects && (
+                <EmptyMessage>{t('No projects found')}</EmptyMessage>
+              )}
 
               {!isProject && (
                 <AccountNotificationsByOrganizationContainer field={field} />

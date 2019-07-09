@@ -1,18 +1,34 @@
-import {MAX_RECENT_SEARCHES} from 'app/constants';
+import {MAX_RECENT_SEARCHES, SEARCH_TYPES} from 'app/constants';
+import {addErrorMessage} from 'app/actionCreators/indicator';
+import {t} from 'app/locale';
+import SavedSearchesActions from 'app/actions/savedSearchesActions';
 import handleXhrErrorResponse from 'app/utils/handleXhrErrorResponse';
 
-export function fetchSavedSearches(api, orgId, useOrgSavedSearches = false) {
+export function resetSavedSearches() {
+  SavedSearchesActions.resetSavedSearches();
+}
+
+export function fetchSavedSearches(api, orgId) {
   const url = `/organizations/${orgId}/searches/`;
+  const data = {use_org_level: 1};
 
-  const data = {};
-  if (useOrgSavedSearches) {
-    data.use_org_level = '1';
-  }
+  SavedSearchesActions.startFetchSavedSearches();
 
-  return api.requestPromise(url, {
+  const promise = api.requestPromise(url, {
     method: 'GET',
     data,
   });
+
+  promise
+    .then(resp => {
+      SavedSearchesActions.fetchSavedSearchesSuccess(resp);
+    })
+    .catch(err => {
+      SavedSearchesActions.fetchSavedSearchesError(err);
+      addErrorMessage(t('Unable to load saved searches'));
+    });
+
+  return promise;
 }
 
 export function fetchProjectSavedSearches(api, orgId, projectId) {
@@ -34,15 +50,45 @@ const getRecentSearchUrl = orgId => `/organizations/${orgId}/recent-searches/`;
  */
 export function saveRecentSearch(api, orgId, type, query) {
   const url = getRecentSearchUrl(orgId);
-  const promise = api
-    .requestPromise(url, {
-      method: 'POST',
-      data: {
-        query,
-        type,
-      },
-    })
-    .catch(handleXhrErrorResponse('Unable to save a recent search'));
+  const promise = api.requestPromise(url, {
+    method: 'POST',
+    data: {
+      query,
+      type,
+    },
+  });
+
+  promise.catch(handleXhrErrorResponse('Unable to save a recent search'));
+
+  return promise;
+}
+
+/**
+ * Creates a saved search
+ *
+ * @param {Object} api API client
+ * @param {String} orgId Organization slug
+ * @param {String} name Saved search name
+ * @param {String} query Query to save
+ *
+ * @returns {Promise<Object>}
+ */
+
+export function createSavedSearch(api, orgId, name, query) {
+  const promise = api.requestPromise(`/organizations/${orgId}/searches/`, {
+    method: 'POST',
+    data: {
+      type: SEARCH_TYPES.ISSUE,
+      query,
+      name,
+    },
+  });
+
+  // Need to wait for saved search to save unfortunately because we need to redirect
+  // to saved search URL
+  promise.then(resp => {
+    SavedSearchesActions.createSavedSearchSuccess(resp);
+  });
 
   return promise;
 }
@@ -59,15 +105,65 @@ export function saveRecentSearch(api, orgId, type, query) {
  */
 export function fetchRecentSearches(api, orgId, type, query) {
   const url = getRecentSearchUrl(orgId);
-  const promise = api
-    .requestPromise(url, {
-      query: {
-        query,
-        type,
-        limit: MAX_RECENT_SEARCHES,
-      },
-    })
-    .catch(handleXhrErrorResponse('Unable to fetch recent searches'));
+  const promise = api.requestPromise(url, {
+    query: {
+      query,
+      type,
+      limit: MAX_RECENT_SEARCHES,
+    },
+  });
+
+  promise.catch(handleXhrErrorResponse('Unable to fetch recent searches'));
+
+  return promise;
+}
+
+const getPinSearchUrl = orgId => `/organizations/${orgId}/pinned-searches/`;
+
+export function pinSearch(api, orgId, type, query) {
+  const url = getPinSearchUrl(orgId);
+
+  // Optimistically update store
+  SavedSearchesActions.pinSearch(type, query);
+
+  const promise = api.requestPromise(url, {
+    method: 'PUT',
+    data: {
+      query,
+      type,
+    },
+  });
+
+  promise.then(SavedSearchesActions.pinSearchSuccess);
+
+  promise.catch(handleXhrErrorResponse('Unable to pin search'));
+
+  promise.catch(err => {
+    SavedSearchesActions.unpinSearch(type);
+  });
+
+  return promise;
+}
+
+export function unpinSearch(api, orgId, type, pinnedSearch) {
+  const url = getPinSearchUrl(orgId);
+
+  // Optimistically update store
+  SavedSearchesActions.unpinSearch(type);
+
+  const promise = api.requestPromise(url, {
+    method: 'DELETE',
+    data: {
+      type,
+    },
+  });
+
+  promise.catch(handleXhrErrorResponse('Unable to un-pin search'));
+
+  promise.catch(() => {
+    const {type: pinnedType, query, ...rest} = pinnedSearch;
+    SavedSearchesActions.pinSearch(pinnedType, query, ...rest);
+  });
 
   return promise;
 }
@@ -86,6 +182,7 @@ export function deleteSavedSearch(api, orgId, search) {
     .requestPromise(url, {
       method: 'DELETE',
     })
+    .then(() => SavedSearchesActions.deleteSavedSearchSuccess(search))
     .catch(handleXhrErrorResponse('Unable to delete a saved search'));
 
   return promise;

@@ -1,20 +1,20 @@
-import * as Sentry from '@sentry/browser';
 import {Flex} from 'grid-emotion';
+import {browserHistory} from 'react-router';
 import {isEqual} from 'lodash';
 import PropTypes from 'prop-types';
 import React from 'react';
+import * as Sentry from '@sentry/browser';
 import styled from 'react-emotion';
-import {browserHistory} from 'react-router';
 
-import {addErrorMessage} from 'app/actionCreators/indicator';
 import {Panel} from 'app/components/panels';
+import {addErrorMessage} from 'app/actionCreators/indicator';
 import {t} from 'app/locale';
 import AsyncComponent from 'app/components/asyncComponent';
 import AsyncView from 'app/views/asyncView';
 import Feature from 'app/components/acl/feature';
 import Pagination from 'app/components/pagination';
 import SentryTypes from 'app/sentryTypes';
-import utils from 'app/utils';
+import parseLinkHeader from 'app/utils/parseLinkHeader';
 import withOrganization from 'app/utils/withOrganization';
 
 import {getParams} from './utils/getParams';
@@ -22,7 +22,7 @@ import EventsChart from './eventsChart';
 import EventsTable from './eventsTable';
 
 const parseRowFromLinks = (links, numRows) => {
-  links = utils.parseLinkHeader(links);
+  links = parseLinkHeader(links);
   if (!links.previous.results) {
     return `1-${numRows}`;
   }
@@ -130,7 +130,9 @@ class OrganizationEvents extends AsyncView {
       const project = organization.projects.find(p => p.id === event.projectID);
 
       browserHistory.replace(
-        `/organizations/${organization.slug}/projects/${project.slug}/events/${event.eventID}/`
+        `/organizations/${organization.slug}/projects/${project.slug}/events/${
+          event.eventID
+        }/`
       );
     }
   }
@@ -169,7 +171,7 @@ class OrganizationEvents extends AsyncView {
     const {organization, location, router} = this.props;
     const {error, loading, reloading, events, eventsPageLinks} = this.state;
     const parsedLinks =
-      !loading && !error && eventsPageLinks ? utils.parseLinkHeader(eventsPageLinks) : {};
+      !loading && !error && eventsPageLinks ? parseLinkHeader(eventsPageLinks) : {};
 
     return (
       <React.Fragment>
@@ -197,29 +199,26 @@ class OrganizationEvents extends AsyncView {
           onUpdateComplete={this.handleTableUpdateComplete}
         />
 
-        {!loading &&
-          !reloading &&
-          !error && (
-            <Flex align="center" justify="space-between">
-              <RowDisplay>
-                {events.length ? t(`Results ${this.renderRowCounts()}`) : t('No Results')}
-                {!!events.length &&
-                  eventsPageLinks && (
-                    <Feature features={['internal-catchall']}>
-                      <TotalEventCount
-                        organization={organization}
-                        location={location}
-                        isAllResults={
-                          !parsedLinks.previous.results && !parsedLinks.next.results
-                        }
-                        numRows={events.length}
-                      />
-                    </Feature>
-                  )}
-              </RowDisplay>
-              <Pagination pageLinks={eventsPageLinks} className="" />
-            </Flex>
-          )}
+        {!loading && !reloading && !error && (
+          <Flex align="center" justify="space-between">
+            <RowDisplay>
+              {events.length ? t(`Results ${this.renderRowCounts()}`) : t('No Results')}
+              {!!events.length && eventsPageLinks && (
+                <Feature features={['internal-catchall']}>
+                  <TotalEventCount
+                    organization={organization}
+                    location={location}
+                    isAllResults={
+                      !parsedLinks.previous.results && !parsedLinks.next.results
+                    }
+                    numRows={events.length}
+                  />
+                </Feature>
+              )}
+            </RowDisplay>
+            <Pagination pageLinks={eventsPageLinks} className="" />
+          </Flex>
+        )}
       </React.Fragment>
     );
   }

@@ -19,6 +19,14 @@ import six
 from datetime import datetime
 
 
+# These chars cannot be used in Windows paths so repalce them:
+# https://docs.microsoft.com/en-us/windows/desktop/FileIO/naming-a-file#naming-conventions
+UNSAFE_PATH_CHARS = ('<', '>', ':', '"', ' | ', '?', '*')
+
+
+DIRECTORY_GROUPING_CHARS = ('::', '-', '[', ']', '\\')
+
+
 DEFAULT_EVENT_DATA = {
     'extra': {
         'loadavg': [0.97607421875, 0.88330078125, 0.833984375],
@@ -149,6 +157,22 @@ def factories():
     return Factories
 
 
+@pytest.mark.django_db
+@pytest.fixture
+def project(team, factories):
+    return factories.create_project(
+        name='bar',
+        slug='bar',
+        teams=[team]
+    )
+
+
+@pytest.fixture
+def task_runner():
+    from sentry.testutils.helpers.task_runner import TaskRunner
+    return TaskRunner
+
+
 @pytest.fixture(scope='function')
 def session():
     return factories.create_session()
@@ -266,12 +290,21 @@ def log():
     return inner
 
 
+class ReadableYamlDumper(yaml.dumper.SafeDumper):
+    """Disable pyyaml aliases for identical object references"""
+
+    def ignore_aliases(self, data):
+        return True
+
+
 @pytest.fixture
 def insta_snapshot(request, log):
     def inner(output, reference_file=None, subname=None):
         if reference_file is None:
             name = request.node.name
-            for c in ('::', '-', '[', ']'):
+            for c in UNSAFE_PATH_CHARS:
+                name = name.replace(c, '@')
+            for c in DIRECTORY_GROUPING_CHARS:
                 name = name.replace(c, '/')
             name = name.strip('/')
 
@@ -287,7 +320,11 @@ def insta_snapshot(request, log):
                 "subname only works if you don't provide your own entire reference_file")
 
         if not isinstance(output, six.string_types):
-            output = yaml.safe_dump(output, indent=2, default_flow_style=False)
+            output = yaml.dump(
+                output,
+                indent=2,
+                default_flow_style=False,
+                Dumper=ReadableYamlDumper)
 
         try:
             with open(reference_file) as f:

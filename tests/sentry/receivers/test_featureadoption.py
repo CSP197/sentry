@@ -14,7 +14,7 @@ from sentry.signals import (
     plugin_enabled,
     user_feedback_received,
     issue_assigned,
-    issue_resolved_in_release,
+    issue_resolved,
     advanced_search,
     save_search_created,
     inbound_filter_toggled,
@@ -28,7 +28,7 @@ from sentry.testutils import TestCase
 class FeatureAdoptionTest(TestCase):
     def setUp(self):
         super(FeatureAdoptionTest, self).setUp()
-        self.now = timezone.now().replace(microsecond=0)
+        self.now = timezone.now()
         self.owner = self.create_user()
         self.organization = self.create_organization(owner=self.owner)
         self.team = self.create_team(organization=self.organization)
@@ -63,10 +63,14 @@ class FeatureAdoptionTest(TestCase):
         assert feature_complete.complete
 
     def test_first_event(self):
-        group = self.create_group(
+        event = self.create_event(
             project=self.project, platform='javascript', message='javascript error message'
         )
-        first_event_received.send(project=self.project, group=group, sender=type(self.project))
+        first_event_received.send(
+            project=self.project,
+            event=event,
+            sender=type(self.project),
+        )
 
         first_event = FeatureAdoption.objects.get_by_slug(
             organization=self.organization, slug="first_event"
@@ -563,10 +567,15 @@ class FeatureAdoptionTest(TestCase):
         group = self.create_group(
             project=self.project, platform='javascript', message='javascript error message'
         )
-        simple_event = self.create_event()
-        first_event_received.send(project=self.project, group=group, sender=type(self.project))
+        simple_event = self.create_event(group=group, platform='javascript')
+        first_event_received.send(
+            project=self.project,
+            event=simple_event,
+            sender=type(self.project),
+        )
         event_processed.send(
-            project=self.project, group=group, event=simple_event, sender=type(self.project)
+            project=self.project, group=simple_event.group, event=simple_event, sender=type(
+                self.project)
         )
 
         first_event = FeatureAdoption.objects.get_by_slug(
@@ -580,7 +589,8 @@ class FeatureAdoptionTest(TestCase):
 
         full_event = self.create_full_event()
         event_processed.send(
-            project=self.project, group=group, event=full_event, sender=type(self.project)
+            project=self.project, group=full_event.group, event=full_event, sender=type(
+                self.project)
         )
 
         release_tracking = FeatureAdoption.objects.get_by_slug(
@@ -651,7 +661,22 @@ class FeatureAdoptionTest(TestCase):
         assert feature_complete
 
     def test_resolved_in_release(self):
-        issue_resolved_in_release.send(
+        issue_resolved.send(
+            organization_id=self.organization.id,
+            project=self.project,
+            group=self.group,
+            user=self.user,
+            resolution_type='in_next_release',
+            sender=type(
+                self.project))
+        feature_complete = FeatureAdoption.objects.get_by_slug(
+            organization=self.organization, slug="resolved_in_release"
+        )
+        assert feature_complete
+
+    def test_resolved_manually(self):
+        issue_resolved.send(
+            organization_id=self.organization.id,
             project=self.project,
             group=self.group,
             user=self.user,
@@ -661,7 +686,7 @@ class FeatureAdoptionTest(TestCase):
         feature_complete = FeatureAdoption.objects.get_by_slug(
             organization=self.organization, slug="resolved_in_release"
         )
-        assert feature_complete
+        assert not feature_complete
 
     def test_advanced_search(self):
         advanced_search.send(project=self.project, sender=type(self.project))

@@ -17,6 +17,7 @@ from sentry.models import (
 )
 from sentry.search.utils import convert_user_tag_to_query
 from sentry.utils.safe import get_path
+from sentry.sdk_updates import get_suggested_updates, SdkSetupState
 
 
 CRASH_FILE_TYPES = set(['event.minidump'])
@@ -44,6 +45,7 @@ class EventSerializer(Serializer):
     def _get_entries(self, event, user, is_public=False):
         # XXX(dcramer): These are called entries for future-proofing
 
+        platform = event.platform
         meta = event.data.get('_meta') or {}
         interface_list = []
 
@@ -52,7 +54,7 @@ class EventSerializer(Serializer):
             if key in self._reserved_keys:
                 continue
 
-            data = interface.get_api_context(is_public=is_public)
+            data = interface.get_api_context(is_public=is_public, platform=platform)
             # data might not be returned for e.g. a public HTTP repr
             if not data:
                 continue
@@ -64,7 +66,8 @@ class EventSerializer(Serializer):
 
             api_meta = None
             if meta.get(key):
-                api_meta = interface.get_api_meta(meta[key], is_public=is_public)
+                api_meta = interface.get_api_meta(meta[key], is_public=is_public,
+                                                  platform=platform)
                 api_meta = meta_with_chunks(data, api_meta)
 
             interface_list.append((interface, entry, api_meta))
@@ -82,12 +85,14 @@ class EventSerializer(Serializer):
         if not interface:
             return (None, None)
 
-        data = interface.get_api_context(is_public=is_public)
+        platform = event.platform
+        data = interface.get_api_context(is_public=is_public, platform=platform)
         event_meta = event.data.get('_meta') or {}
         if not data or not event_meta.get(name):
             return (data, None)
 
-        api_meta = interface.get_api_meta(event_meta[name], is_public=is_public)
+        api_meta = interface.get_api_meta(event_meta[name], is_public=is_public,
+                                          platform=platform)
         # data might not be returned for e.g. a public HTTP repr
         if not api_meta:
             return (data, None)
@@ -97,6 +102,14 @@ class EventSerializer(Serializer):
     def _get_tags_with_meta(self, event):
         meta = get_path(event.data, '_meta', 'tags') or {}
 
+        # If we have meta, we need to get the tags in their original order
+        # from the raw event body as the indexes need to line up with the
+        # metadata indexes. In other cases we can use event.tags
+        if meta:
+            raw_tags = event.data.get('tags') or []
+        else:
+            raw_tags = event.tags
+
         tags = sorted(
             [
                 {
@@ -104,11 +117,7 @@ class EventSerializer(Serializer):
                     'value': kv[1],
                     '_meta': meta.get(kv[0]) or get_path(meta, six.text_type(i), '1') or None,
                 }
-                # TODO this should be using event.tags but there are some weird
-                # issues around that because event.tags re-sorts the tags and
-                # this function relies on them being in the original order to
-                # look up meta.
-                for i, kv in enumerate(event.data.get('tags') or ())
+                for i, kv in enumerate(raw_tags)
                 if kv is not None and kv[0] is not None and kv[1] is not None],
             key=lambda x: x['key']
         )
@@ -238,7 +247,7 @@ class EventSerializer(Serializer):
 
         d = {
             'id': six.text_type(obj.id),
-            'groupID': six.text_type(obj.group_id),
+            'groupID': six.text_type(obj.group_id) if obj.group_id else None,
             'eventID': six.text_type(obj.event_id),
             'projectID': six.text_type(obj.project_id),
             'size': obj.size,
@@ -284,10 +293,14 @@ class DetailedEventSerializer(EventSerializer):
     Adds release and user report info to the serialized event.
     """
 
+    def _get_sdk_updates(self, obj):
+        return list(get_suggested_updates(SdkSetupState.from_event_json(obj.data)))
+
     def serialize(self, obj, attrs, user):
         result = super(DetailedEventSerializer, self).serialize(obj, attrs, user)
         result['release'] = self._get_release_info(user, obj)
         result['userReport'] = self._get_user_report(user, obj)
+        result['sdkUpdates'] = self._get_sdk_updates(obj)
         return result
 
 
@@ -345,7 +358,8 @@ class SimpleEventSerializer(EventSerializer):
 
         return {
             'id': six.text_type(obj.id),
-            'groupID': six.text_type(obj.group_id),
+            'event.type': six.text_type(obj.type),
+            'groupID': six.text_type(obj.group_id) if obj.group_id else None,
             'eventID': six.text_type(obj.event_id),
             'projectID': six.text_type(obj.project_id),
             # XXX for 'message' this doesn't do the proper resolution of logentry

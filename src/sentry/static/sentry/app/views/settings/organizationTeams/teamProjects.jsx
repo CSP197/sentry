@@ -1,9 +1,9 @@
+import PropTypes from 'prop-types';
 import React from 'react';
-import createReactClass from 'create-react-class';
 import styled from 'react-emotion';
 
 import Tooltip from 'app/components/tooltip';
-import ApiMixin from 'app/mixins/apiMixin';
+import withApi from 'app/utils/withApi';
 import {addErrorMessage, addSuccessMessage} from 'app/actionCreators/indicator';
 import space from 'app/styles/space';
 import Button from 'app/components/button';
@@ -12,31 +12,32 @@ import DropdownButton from 'app/components/dropdownButton';
 import EmptyMessage from 'app/views/settings/components/emptyMessage';
 import LoadingIndicator from 'app/components/loadingIndicator';
 import LoadingError from 'app/components/loadingError';
-import OrganizationState from 'app/mixins/organizationState';
 import ProjectListItem from 'app/views/settings/components/settingsProjectItem';
 import {Panel, PanelHeader, PanelBody, PanelItem} from 'app/components/panels';
 import InlineSvg from 'app/components/inlineSvg';
 import Pagination from 'app/components/pagination';
 import {sortProjects} from 'app/utils';
 import {t} from 'app/locale';
+import withOrganization from 'app/utils/withOrganization';
+import SentryTypes from 'app/sentryTypes';
 
-const TeamProjects = createReactClass({
-  displayName: 'TeamProjects',
-  mixins: [ApiMixin, OrganizationState],
+class TeamProjects extends React.Component {
+  static propTypes = {
+    api: PropTypes.object.isRequired,
+    organization: SentryTypes.Organization.isRequired,
+  };
 
-  getInitialState() {
-    return {
-      error: false,
-      loading: true,
-      pageLinks: null,
-      unlinkedProjects: [],
-      linkedProjects: [],
-    };
-  },
+  state = {
+    error: false,
+    loading: true,
+    pageLinks: null,
+    unlinkedProjects: [],
+    linkedProjects: [],
+  };
 
   componentDidMount() {
     this.fetchAll();
-  },
+  }
 
   componentDidUpdate(prevProps) {
     if (
@@ -49,19 +50,22 @@ const TeamProjects = createReactClass({
     if (prevProps.location !== this.props.location) {
       this.fetchTeamProjects();
     }
-  },
+  }
 
-  fetchAll() {
+  fetchAll = () => {
     this.fetchTeamProjects();
     this.fetchUnlinkedProjects();
-  },
+  };
 
-  fetchTeamProjects() {
-    const {location, params: {orgId, teamId}} = this.props;
+  fetchTeamProjects = () => {
+    const {
+      location,
+      params: {orgId, teamId},
+    } = this.props;
 
     this.setState({loading: true});
 
-    this.api
+    this.props.api
       .requestPromise(`/organizations/${orgId}/projects/`, {
         query: {
           query: `team:${teamId}`,
@@ -80,12 +84,14 @@ const TeamProjects = createReactClass({
       .catch(() => {
         this.setState({loading: false, error: true});
       });
-  },
+  };
 
-  fetchUnlinkedProjects(query) {
-    const {params: {orgId, teamId}} = this.props;
+  fetchUnlinkedProjects = query => {
+    const {
+      params: {orgId, teamId},
+    } = this.props;
 
-    this.api
+    this.props.api
       .requestPromise(`/organizations/${orgId}/projects/`, {
         query: {
           query: query ? `!team:${teamId} ${query}` : `!team:${teamId}`,
@@ -94,11 +100,11 @@ const TeamProjects = createReactClass({
       .then(unlinkedProjects => {
         this.setState({unlinkedProjects});
       });
-  },
+  };
 
-  handleLinkProject(project, action) {
+  handleLinkProject = (project, action) => {
     const {orgId, teamId} = this.props.params;
-    this.api.request(`/projects/${orgId}/${project.slug}/teams/${teamId}/`, {
+    this.props.api.request(`/projects/${orgId}/${project.slug}/teams/${teamId}/`, {
       method: action === 'add' ? 'POST' : 'DELETE',
       success: () => {
         this.fetchAll();
@@ -112,28 +118,29 @@ const TeamProjects = createReactClass({
         addErrorMessage(t("Wasn't able to change project association."));
       },
     });
-  },
+  };
 
-  handleProjectSelected(selection) {
+  handleProjectSelected = selection => {
     const project = this.state.unlinkedProjects.find(p => {
       return p.id === selection.value;
     });
 
     this.handleLinkProject(project, 'add');
-  },
+  };
 
-  handleQueryUpdate(evt) {
+  handleQueryUpdate = evt => {
     this.fetchUnlinkedProjects(evt.target.value);
-  },
+  };
 
   projectPanelContents(projects) {
-    const access = this.getAccess();
+    const {organization} = this.props;
+    const access = new Set(organization.access);
     const canWrite = access.has('org:write');
 
     return projects.length ? (
       sortProjects(projects).map((project, i) => (
         <StyledPanelItem key={project.id}>
-          <ProjectListItem project={project} organization={this.context.organization} />
+          <ProjectListItem project={project} organization={organization} />
           <Tooltip
             disabled={canWrite}
             title={t('You do not have enough permission to change project association.')}
@@ -155,7 +162,7 @@ const TeamProjects = createReactClass({
         {t("This team doesn't have access to any projects.")}
       </EmptyMessage>
     );
-  },
+  }
 
   render() {
     const {linkedProjects, unlinkedProjects, error, loading} = this.state;
@@ -168,7 +175,7 @@ const TeamProjects = createReactClass({
       return <LoadingIndicator />;
     }
 
-    const access = this.getAccess();
+    const access = new Set(this.props.organization.access);
 
     const otherProjects = unlinkedProjects.map(p => {
       return {
@@ -213,8 +220,8 @@ const TeamProjects = createReactClass({
         <Pagination pageLinks={this.state.pageLinks} {...this.props} />
       </React.Fragment>
     );
-  },
-});
+  }
+}
 
 const RemoveIcon = styled(props => (
   <InlineSvg {...props} src="icon-circle-subtract">
@@ -237,4 +244,6 @@ const ProjectListElement = styled('div')`
   padding: ${space(0.25)} 0;
 `;
 
-export default TeamProjects;
+export {TeamProjects};
+
+export default withApi(withOrganization(TeamProjects));

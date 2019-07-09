@@ -1,11 +1,12 @@
 import React from 'react';
-import {mount, shallow} from 'enzyme';
 
+import {initializeOrg} from 'app-test/helpers/initializeOrg';
+import {mount} from 'enzyme';
 import GroupSidebar from 'app/components/group/sidebar';
 
 describe('GroupSidebar', function() {
   let group = TestStubs.Group({tags: TestStubs.Tags()});
-  const project = TestStubs.Project();
+  const {organization, project, routerContext} = initializeOrg();
   const environment = {name: 'production', displayName: 'Production', id: '1'};
   let wrapper;
   let tagsMock;
@@ -48,10 +49,11 @@ describe('GroupSidebar', function() {
       <GroupSidebar
         group={group}
         project={project}
+        organization={organization}
         event={TestStubs.Event()}
         environments={[environment]}
       />,
-      TestStubs.routerContext()
+      routerContext
     );
   });
 
@@ -70,9 +72,9 @@ describe('GroupSidebar', function() {
       expect(wrapper.find('SuggestedOwners')).toHaveLength(1);
       expect(wrapper.find('GroupReleaseStats')).toHaveLength(1);
       expect(wrapper.find('ExternalIssueList')).toHaveLength(1);
-      expect(wrapper.find('TagDistributionMeter[data-test-id="group-tag"]')).toHaveLength(
-        5
-      );
+      expect(
+        wrapper.find('GroupTagDistributionMeter[data-test-id="group-tag"]')
+      ).toHaveLength(5);
     });
   });
 
@@ -89,14 +91,16 @@ describe('GroupSidebar', function() {
         body: [],
       });
 
-      wrapper = shallow(
+      wrapper = mount(
         <GroupSidebar
+          api={new MockApiClient()}
           group={group}
+          organization={organization}
           project={project}
           event={TestStubs.Event()}
           environments={[environment]}
         />,
-        TestStubs.routerContext()
+        routerContext
       );
     });
 
@@ -122,7 +126,7 @@ describe('GroupSidebar', function() {
     });
 
     it('can subscribe', function() {
-      const btn = wrapper.find('.btn-subscribe');
+      const btn = wrapper.find('SubscribeButton');
 
       btn.simulate('click');
 

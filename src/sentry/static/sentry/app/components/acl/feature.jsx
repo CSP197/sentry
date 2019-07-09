@@ -155,7 +155,9 @@ class Feature extends React.Component {
     let customDisabledRender =
       renderDisabled === false
         ? false
-        : typeof renderDisabled === 'function' ? renderDisabled : () => <ComingSoon />;
+        : typeof renderDisabled === 'function'
+        ? renderDisabled
+        : () => <ComingSoon />;
 
     // Override the renderDisabled function with a hook store function if there
     // is one registered for the feature.
@@ -183,7 +185,7 @@ class Feature extends React.Component {
       return children(renderProps);
     }
 
-    return hasFeature ? children : null;
+    return hasFeature && children ? children : null;
   }
 }
 

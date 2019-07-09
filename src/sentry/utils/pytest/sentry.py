@@ -1,6 +1,5 @@
 from __future__ import absolute_import
 
-import pytest
 import mock
 import os
 
@@ -38,17 +37,7 @@ def pytest_configure(config):
     if not settings.configured:
         # only configure the db if its not already done
         test_db = os.environ.get('DB', 'postgres')
-        if test_db == 'mysql':
-            settings.DATABASES['default'].update(
-                {
-                    'ENGINE': 'django.db.backends.mysql',
-                    'NAME': 'sentry',
-                    'USER': 'root',
-                    'HOST': '127.0.0.1',
-                }
-            )
-            # mysql requires running full migration all the time
-        elif test_db == 'postgres':
+        if test_db == 'postgres':
             settings.DATABASES['default'].update(
                 {
                     'ENGINE': 'sentry.db.postgres',
@@ -60,13 +49,6 @@ def pytest_configure(config):
             # postgres requires running full migration all the time
             # since it has to install stored functions which come from
             # an actual migration.
-        elif test_db == 'sqlite':
-            settings.DATABASES['default'].update(
-                {
-                    'ENGINE': 'django.db.backends.sqlite3',
-                    'NAME': ':memory:',
-                }
-            )
         else:
             raise RuntimeError('oops, wrong database: %r' % test_db)
 
@@ -128,6 +110,12 @@ def pytest_configure(config):
             'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
         }
     }
+
+    if os.environ.get('USE_SNUBA', False):
+        settings.SENTRY_SEARCH = 'sentry.search.snuba.SnubaSearchBackend'
+        settings.SENTRY_TAGSTORE = 'sentry.tagstore.snuba.SnubaCompatibilityTagStorage'
+        settings.SENTRY_TSDB = 'sentry.tsdb.redissnuba.RedisSnubaTSDB'
+        settings.SENTRY_EVENTSTREAM = 'sentry.eventstream.snuba.SnubaEventStream'
 
     if not hasattr(settings, 'SENTRY_OPTIONS'):
         settings.SENTRY_OPTIONS = {}
@@ -241,9 +229,10 @@ def register_extensions():
 
 
 def pytest_runtest_teardown(item):
-    from sentry import tsdb
-    # TODO(dcramer): this only works if this is the correct tsdb backend
-    tsdb.flush()
+    if not os.environ.get('USE_SNUBA', False):
+        from sentry import tsdb
+        # TODO(dcramer): this only works if this is the correct tsdb backend
+        tsdb.flush()
 
     # XXX(dcramer): only works with DummyNewsletter
     from sentry import newsletter
@@ -263,11 +252,3 @@ def pytest_runtest_teardown(item):
         model.objects.clear_local_cache()
 
     Hub.main.bind_client(None)
-
-
-@pytest.fixture(autouse=True)
-def _mock_skip_to_python(monkeypatch, request):
-    from sentry.interfaces.base import RUST_RENORMALIZED_DEFAULT
-    monkeypatch.setattr(
-        'sentry.models.event._should_skip_to_python',
-        lambda _: RUST_RENORMALIZED_DEFAULT)

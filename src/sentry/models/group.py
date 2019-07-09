@@ -83,7 +83,7 @@ class EventOrdering(Enum):
 
 
 def get_oldest_or_latest_event_for_environments(
-        ordering, environments=[], issue_id=None, project_id=None):
+        ordering, environments=(), issue_id=None, project_id=None):
     from sentry.utils import snuba
     from sentry.models import SnubaEvent
 
@@ -273,7 +273,6 @@ class Group(Model):
     active_at = models.DateTimeField(null=True, db_index=True)
     time_spent_total = BoundedIntegerField(default=0)
     time_spent_count = BoundedIntegerField(default=0)
-    # score will be incorrect in sqlite as it doesnt support the required functions
     score = BoundedIntegerField(default=0)
     # deprecated, do not use. GroupShare has superseded
     is_public = models.NullBooleanField(default=False, null=True)
@@ -316,13 +315,7 @@ class Group(Model):
         super(Group, self).save(*args, **kwargs)
 
     def get_absolute_url(self, params=None):
-        from sentry import features
-        if features.has('organizations:sentry10', self.organization):
-            url = reverse('sentry-organization-issue', args=[self.organization.slug, self.id])
-            params = {} if params is None else params
-            params['project'] = self.project.id
-        else:
-            url = reverse('sentry-group', args=[self.organization.slug, self.project.slug, self.id])
+        url = reverse('sentry-organization-issue', args=[self.organization.slug, self.id])
         if params:
             url = url + '?' + urlencode(params)
         return absolute_uri(url)
@@ -413,7 +406,7 @@ class Group(Model):
                 self._latest_event = None
         return self._latest_event
 
-    def get_latest_event_for_environments(self, environments=[]):
+    def get_latest_event_for_environments(self, environments=()):
         use_snuba = options.get('snuba.events-queries.enabled')
 
         # Fetch without environment if Snuba is not enabled
@@ -442,7 +435,7 @@ class Group(Model):
                 self._oldest_event = None
         return self._oldest_event
 
-    def get_oldest_event_for_environments(self, environments=[]):
+    def get_oldest_event_for_environments(self, environments=()):
         use_snuba = options.get('snuba.events-queries.enabled')
 
         # Fetch without environment if Snuba is not enabled

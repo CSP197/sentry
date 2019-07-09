@@ -11,29 +11,12 @@ from sentry.models import ApiScopes, SentryApp
 from sentry.models.sentryapp import VALID_EVENT_RESOURCES, REQUIRED_EVENT_PERMISSIONS
 
 
-class NameField(serializers.CharField):
-    def from_native(self, data):
-        rv = super(NameField, self).from_native(data)
-        if not rv:
-            return
-        if not self.is_valid_slug(rv):
-            raise ValidationError(u'Name {} is already taken, please use another.'.format(data))
-        return rv
-
-    def is_valid_slug(self, value):
-        slug = slugify(value)
-
-        if SentryApp.with_deleted.filter(slug=slug).exists():
-            return False
-
-        return True
-
-
 class ApiScopesField(serializers.WritableField):
     def validate(self, data):
         valid_scopes = ApiScopes()
-        if data is None:
-            raise ValidationError('Must provide scopes')
+
+        if not data:
+            return
 
         for scope in data:
             if scope not in valid_scopes:
@@ -42,6 +25,9 @@ class ApiScopesField(serializers.WritableField):
 
 class EventListField(serializers.WritableField):
     def validate(self, data):
+        if not data:
+            return
+
         if not set(data).issubset(VALID_EVENT_RESOURCES):
             raise ValidationError(u'Invalid event subscription: {}'.format(
                 ', '.join(set(data).difference(VALID_EVENT_RESOURCES))
@@ -50,7 +36,7 @@ class EventListField(serializers.WritableField):
 
 class SchemaField(serializers.WritableField):
     def validate(self, data):
-        if data == {}:
+        if not data or data == {}:
             return
 
         try:
@@ -59,15 +45,47 @@ class SchemaField(serializers.WritableField):
             raise ValidationError(e.message)
 
 
+class URLField(serializers.URLField):
+    def validate(self, url):
+        # The Django URLField doesn't distinguish between different types of
+        # invalid URLs, so do any manual checks here to give the User a better
+        # error message.
+        if url and not url.startswith('http'):
+            raise ValidationError('URL must start with http[s]://')
+
+        super(URLField, self).validate(url)
+
+
 class SentryAppSerializer(Serializer):
-    name = NameField()
+    name = serializers.CharField()
+    author = serializers.CharField()
     scopes = ApiScopesField()
+    status = serializers.CharField(required=False)
     events = EventListField(required=False)
     schema = SchemaField(required=False)
-    webhookUrl = serializers.URLField()
-    redirectUrl = serializers.URLField(required=False)
+    webhookUrl = URLField()
+    redirectUrl = URLField(required=False)
     isAlertable = serializers.BooleanField(required=False)
     overview = serializers.CharField(required=False)
+
+    def __init__(self, instance=None, *args, **kwargs):
+        self.instance = instance
+        super(SentryAppSerializer, self).__init__(*args, **kwargs)
+
+    def validate_name(self, attrs, source):
+        if not attrs.get('name'):
+            return attrs
+
+        queryset = SentryApp.with_deleted.filter(slug=slugify(attrs['name']))
+
+        if self.instance:
+            queryset = queryset.exclude(id=self.instance.id)
+
+        if queryset.exists():
+            raise ValidationError(
+                u'Name {} is already taken, please use another.'.format(attrs['name'])
+            )
+        return attrs
 
     def validate_events(self, attrs, source):
         if not attrs.get('scopes'):

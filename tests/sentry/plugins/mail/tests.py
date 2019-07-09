@@ -21,7 +21,8 @@ from sentry.api.serializers import (
 from sentry.digests.notifications import build_digest, event_to_record
 from sentry.models import (
     Activity, Event, Group, GroupSubscription, Organization, OrganizationMember,
-    OrganizationMemberTeam, ProjectOwnership, Rule, UserOption, UserReport
+    OrganizationMemberTeam, ProjectOwnership, Rule, UserOption, UserOptionValue,
+    UserReport
 )
 from sentry.ownership.grammar import Owner, Matcher, dump_schema
 from sentry.plugins import Notification
@@ -38,7 +39,7 @@ class MailPluginTest(TestCase):
         return MailPlugin()
 
     @mock.patch(
-        'sentry.models.ProjectOption.objects.get_value', Mock(side_effect=lambda p, k, d: d)
+        'sentry.models.ProjectOption.objects.get_value', Mock(side_effect=lambda p, k, d, **kw: d)
     )
     @mock.patch(
         'sentry.plugins.sentry_mail.models.MailPlugin.get_sendable_users', Mock(return_value=[])
@@ -81,7 +82,7 @@ class MailPluginTest(TestCase):
             project_id=self.project.id,
             message='Soubor ji\xc5\xbe existuje',
             # Create interface so get_title will be called on it.
-            data={'stacktrace': {'frames': []}},
+            data={'stacktrace': {'frames': [{}]}},
         )
 
         notification = Notification(event=event)
@@ -288,7 +289,11 @@ class MailPluginTest(TestCase):
 
     @mock.patch(
         'sentry.models.ProjectOption.objects.get_value',
-        Mock(side_effect=lambda p, k, d: "[Example prefix] " if k == "mail:subject_prefix" else d)
+        Mock(
+            side_effect=lambda p,
+            k,
+            d,
+            **kw: "[Example prefix] " if k == "mail:subject_prefix" else d)
     )
     def test_notify_digest_subject_prefix(self):
         project = self.event.project
@@ -311,6 +316,11 @@ class MailPluginTest(TestCase):
         assert msg.subject.startswith('[Example prefix]')
 
     def test_assignment(self):
+        UserOption.objects.set_value(
+            user=self.user,
+            key='workflow:notifications',
+            value=UserOptionValue.all_conversations,
+        )
         activity = Activity.objects.create(
             project=self.project,
             group=self.group,
@@ -333,6 +343,12 @@ class MailPluginTest(TestCase):
         assert msg.to == [self.user.email]
 
     def test_assignment_team(self):
+        UserOption.objects.set_value(
+            user=self.user,
+            key='workflow:notifications',
+            value=UserOptionValue.all_conversations,
+        )
+
         activity = Activity.objects.create(
             project=self.project,
             group=self.group,
@@ -356,6 +372,11 @@ class MailPluginTest(TestCase):
 
     def test_note(self):
         user_foo = self.create_user('foo@example.com')
+        UserOption.objects.set_value(
+            user=self.user,
+            key='workflow:notifications',
+            value=UserOptionValue.all_conversations,
+        )
 
         activity = Activity.objects.create(
             project=self.project,
@@ -414,6 +435,11 @@ class MailPluginSignalsTest(TestCase):
 
     def test_user_feedback(self):
         report = self.create_report()
+        UserOption.objects.set_value(
+            user=self.user,
+            key='workflow:notifications',
+            value=UserOptionValue.all_conversations,
+        )
 
         with self.tasks():
             self.plugin.handle_signal(
@@ -439,6 +465,11 @@ class MailPluginSignalsTest(TestCase):
     def test_user_feedback__enhanced_privacy(self):
         self.organization.update(flags=F('flags').bitor(Organization.flags.enhanced_privacy))
         assert self.organization.flags.enhanced_privacy.is_set is True
+        UserOption.objects.set_value(
+            user=self.user,
+            key='workflow:notifications',
+            value=UserOptionValue.all_conversations,
+        )
 
         report = self.create_report()
 

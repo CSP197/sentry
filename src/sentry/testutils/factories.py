@@ -2,15 +2,15 @@
 from __future__ import absolute_import, print_function, unicode_literals
 
 from django.conf import settings
-from django.utils.importlib import import_module
 
 import copy
-import json
+import io
 import os
 import petname
 import random
 import six
 import warnings
+from importlib import import_module
 
 from django.utils import timezone
 from django.utils.text import slugify
@@ -20,6 +20,13 @@ from uuid import uuid4
 
 from sentry.event_manager import EventManager
 from sentry.constants import SentryAppStatus
+from sentry.incidents.models import (
+    Incident,
+    IncidentGroup,
+    IncidentProject,
+    IncidentSeen,
+    IncidentActivity,
+)
 from sentry.mediators import sentry_apps, sentry_app_installations, service_hooks
 from sentry.models import (
     Activity, Environment, Event, EventError, EventMapping, Group, Organization, OrganizationMember,
@@ -27,9 +34,23 @@ from sentry.models import (
     CommitAuthor, Repository, CommitFileChange, ProjectDebugFile, File, UserPermission, EventAttachment,
     UserReport, PlatformExternalIssue,
 )
+from sentry.models.integrationfeature import Feature, IntegrationFeature
+from sentry.utils import json
 from sentry.utils.canonical import CanonicalKeyDict
 
 loremipsum = Generator()
+
+
+def get_fixture_path(name):
+    return os.path.join(
+        os.path.dirname(__file__),  # src/sentry/testutils/
+        os.pardir,  # src/sentry/
+        os.pardir,  # src/
+        os.pardir,
+        'tests',
+        'fixtures',
+        name
+    )
 
 
 def make_sentence(words=None):
@@ -165,6 +186,15 @@ DEFAULT_EVENT_DATA = {
 }
 
 
+def _patch_artifact_manifest(path, org, release, project=None):
+    manifest = json.loads(open(path, 'rb').read())
+    manifest['org'] = org
+    manifest['release'] = release
+    if project:
+        manifest['project'] = project
+    return json.dumps(manifest)
+
+
 # TODO(dcramer): consider moving to something more scaleable like factoryboy
 class Factories(object):
     @staticmethod
@@ -265,7 +295,7 @@ class Factories(object):
             version = os.urandom(20).encode('hex')
 
         if date_added is None:
-            date_added = timezone.now().replace(microsecond=0)
+            date_added = timezone.now()
 
         release = Release.objects.create(
             version=version,
@@ -303,6 +333,25 @@ class Factories(object):
             )
 
         return release
+
+    @staticmethod
+    def create_artifact_bundle(org, release, project=None):
+        import zipfile
+
+        bundle = io.BytesIO()
+        bundle_dir = get_fixture_path('artifact_bundle')
+        with zipfile.ZipFile(bundle, 'w', zipfile.ZIP_DEFLATED) as zipfile:
+            for path, _, files in os.walk(bundle_dir):
+                for filename in files:
+                    fullpath = os.path.join(path, filename)
+                    relpath = os.path.relpath(fullpath, bundle_dir)
+                    if filename == 'manifest.json':
+                        manifest = _patch_artifact_manifest(fullpath, org, release, project)
+                        zipfile.writestr(relpath, manifest)
+                    else:
+                        zipfile.write(fullpath, relpath)
+
+        return bundle.getvalue()
 
     @staticmethod
     def create_repo(project, name=None):
@@ -398,11 +447,11 @@ class Factories(object):
         return useremail
 
     @staticmethod
-    def create_event(group, event_id=None, normalize=True, **kwargs):
+    def create_event(group=None, project=None, event_id=None, normalize=True, **kwargs):
         # XXX: Do not use this method for new tests! Prefer `store_event`.
         if event_id is None:
             event_id = uuid4().hex
-        kwargs.setdefault('project', group.project)
+        kwargs.setdefault('project', project if project else group.project)
         kwargs.setdefault('data', copy.deepcopy(DEFAULT_EVENT_DATA))
         kwargs.setdefault('platform', kwargs['data'].get('platform', 'python'))
         kwargs.setdefault('message', kwargs['data'].get('message', 'message'))
@@ -448,11 +497,12 @@ class Factories(object):
         )
 
         event = Event(event_id=event_id, group=group, **kwargs)
-        EventMapping.objects.create(
-            project_id=event.project.id,
-            event_id=event_id,
-            group=group,
-        )
+        if group:
+            EventMapping.objects.create(
+                project_id=event.project.id,
+                event_id=event_id,
+                group=group,
+            )
         # emulate EventManager refs
         event.data.bind_ref(event)
         event.save()
@@ -672,32 +722,37 @@ class Factories(object):
         UserPermission.objects.create(user=user, permission=permission)
 
     @staticmethod
-    def create_sentry_app(name=None, organization=None, published=False, scopes=(),
-                          webhook_url=None, **kwargs):
-        if not name:
-            name = petname.Generate(2, ' ', letters=10).title()
-        if not organization:
-            organization = Factories.create_organization()
-        if not webhook_url:
-            webhook_url = 'https://example.com/webhook'
+    def create_sentry_app(**kwargs):
+        app = sentry_apps.Creator.run(
+            **Factories._sentry_app_kwargs(**kwargs)
+        )
 
+        if kwargs.get('published'):
+            app.update(status=SentryAppStatus.PUBLISHED)
+
+        return app
+
+    @staticmethod
+    def create_internal_integration(**kwargs):
+        return sentry_apps.InternalCreator.run(
+            **Factories._sentry_app_kwargs(**kwargs)
+        )
+
+    @staticmethod
+    def _sentry_app_kwargs(**kwargs):
         _kwargs = {
-            'name': name,
-            'organization': organization,
-            'scopes': scopes,
-            'webhook_url': webhook_url,
+            'user': kwargs.get('user', Factories.create_user()),
+            'name': kwargs.get('name', petname.Generate(2, ' ', letters=10).title()),
+            'organization': kwargs.get('organization', Factories.create_organization()),
+            'author': kwargs.get('author', 'A Company'),
+            'scopes': kwargs.get('scopes', ()),
+            'webhook_url': kwargs.get('webhook_url', 'https://example.com/webhook'),
             'events': [],
             'schema': {},
         }
 
-        _kwargs.update(kwargs)
-
-        app = sentry_apps.Creator.run(**_kwargs)
-
-        if published:
-            app.update(status=SentryAppStatus.PUBLISHED)
-
-        return app
+        _kwargs.update(**kwargs)
+        return _kwargs
 
     @staticmethod
     def create_sentry_app_installation(organization=None, slug=None, user=None):
@@ -804,14 +859,30 @@ class Factories(object):
         return service_hooks.Creator.run(**_kwargs)
 
     @staticmethod
-    def create_userreport(group, project=None, **kwargs):
+    def create_sentry_app_feature(feature=None, sentry_app=None, description=None):
+        if not sentry_app:
+            sentry_app = Factories.create_sentry_app()
+
+        integration_feature = IntegrationFeature.objects.create(
+            sentry_app=sentry_app,
+            feature=feature or Feature.API,
+        )
+
+        if description:
+            integration_feature.update(user_description=description)
+
+        return integration_feature
+
+    @staticmethod
+    def create_userreport(group, project=None, event_id=None, **kwargs):
         return UserReport.objects.create(
             group=group,
-            event_id='a' * 32,
+            event_id=event_id or 'a' * 32,
             project=project or group.project,
             name='Jane Doe',
             email='jane@example.com',
-            comments="the application crashed"
+            comments="the application crashed",
+            **kwargs
         )
 
     @staticmethod
@@ -830,4 +901,42 @@ class Factories(object):
             service_type=service_type,
             display_name=display_name,
             web_url=web_url,
+        )
+
+    @staticmethod
+    def create_incident(
+        organization, projects, detection_uuid=None, status=1,
+        title=None, query='test query', date_started=None, date_detected=None,
+        date_closed=None, groups=None, seen_by=None,
+    ):
+        if not title:
+            title = petname.Generate(2, ' ', letters=10).title()
+
+        incident = Incident.objects.create(
+            organization=organization,
+            detection_uuid=detection_uuid,
+            status=status,
+            title=title,
+            query=query,
+            date_started=date_started or timezone.now(),
+            date_detected=date_detected or timezone.now(),
+            date_closed=date_closed or timezone.now(),
+        )
+        for project in projects:
+            IncidentProject.objects.create(incident=incident, project=project)
+        if groups:
+            for group in groups:
+                IncidentGroup.objects.create(incident=incident, group=group)
+        if seen_by:
+            for user in seen_by:
+                IncidentSeen.objects.create(incident=incident, user=user, last_seen=timezone.now())
+        return incident
+
+    @staticmethod
+    def create_incident_activity(incident, type, comment=None, user=None):
+        return IncidentActivity.objects.create(
+            incident=incident,
+            type=type,
+            comment=comment,
+            user=user,
         )

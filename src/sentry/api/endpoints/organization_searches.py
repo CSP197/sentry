@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from django.db.models import Q
 from django.utils import six
 
+from sentry import analytics
 from sentry.api.bases.organization import (
     OrganizationEndpoint,
     OrganizationSearchPermission,
@@ -108,6 +109,11 @@ class OrganizationSearchesEndpoint(OrganizationEndpoint):
                 name=result['name'],
                 query=result['query'],
             )
-
+            analytics.record(
+                'organization_saved_search.created',
+                search_type=SearchType(saved_search.type).name,
+                org_id=organization.id,
+                query=saved_search.query,
+            )
             return Response(serialize(saved_search, request.user))
         return Response(serializer.errors, status=400)

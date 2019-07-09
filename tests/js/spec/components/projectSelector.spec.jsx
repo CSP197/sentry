@@ -172,7 +172,7 @@ describe('ProjectSelector', function() {
 
     // Select first project
     wrapper
-      .find('CheckboxWrapper')
+      .find('CheckboxHitbox')
       .first()
       .simulate('click');
 
@@ -190,7 +190,7 @@ describe('ProjectSelector', function() {
 
     // Select first project
     wrapper
-      .find('CheckboxWrapper')
+      .find('CheckboxHitbox')
       .at(0)
       .simulate('click', {target: {checked: true}});
 
@@ -220,7 +220,7 @@ describe('ProjectSelector', function() {
 
     // second project
     wrapper
-      .find('CheckboxWrapper')
+      .find('CheckboxHitbox')
       .at(1)
       .simulate('click', {target: {checked: true}});
 
@@ -254,7 +254,7 @@ describe('ProjectSelector', function() {
 
     // Can unselect item
     wrapper
-      .find('CheckboxWrapper')
+      .find('CheckboxHitbox')
       .at(1)
       .simulate('click', {target: {checked: false}});
 
@@ -279,5 +279,30 @@ describe('ProjectSelector', function() {
           .map(p => p.prop('project').slug)
       )
     ).toEqual(['test-project']);
+  });
+
+  it('displays multi projects', function() {
+    const project = TestStubs.Project();
+    const multiProjectProps = {...props, multiProjects: [project]};
+
+    const wrapper = mount(<ProjectSelector {...multiProjectProps} />, routerContext);
+    openMenu(wrapper);
+    expect(wrapper.find('AutoCompleteItem')).toHaveLength(1);
+    expect(wrapper.text()).not.toContain("Projects I don't belong to");
+  });
+
+  it('displays multi projects with non member projects', function() {
+    const project = TestStubs.Project({id: '1'});
+    const nonMemberProject = TestStubs.Project({id: '2'});
+    const multiProjectProps = {
+      ...props,
+      multiProjects: [project],
+      nonMemberProjects: [nonMemberProject],
+    };
+
+    const wrapper = mount(<ProjectSelector {...multiProjectProps} />, routerContext);
+    openMenu(wrapper);
+    expect(wrapper.text()).toContain("Projects I don't belong to");
+    expect(wrapper.find('AutoCompleteItem')).toHaveLength(2);
   });
 });

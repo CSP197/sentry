@@ -70,9 +70,9 @@ def get_files_for_list(file_list):
 
 def get_js_files(file_list=None, snapshots=False):
     if snapshots:
-        extensions = ('.js', '.jsx', '.jsx.snap', '.js.snap')
+        extensions = ('.js', '.jsx', '.ts', '.tsx', '.jsx.snap', '.js.snap')
     else:
-        extensions = ('.js', '.jsx')
+        extensions = ('.js', '.jsx', '.ts', '.tsx')
 
     if file_list is None:
         file_list = ['tests/js', 'src/sentry/static/sentry/app']
@@ -112,9 +112,9 @@ def js_lint(file_list=None, parseable=False, format=False):
     has_errors = False
     if js_file_list:
         if os.environ.get('CI'):
-            cmd = [eslint_wrapper_path, '--ext', '.js,.jsx']
+            cmd = [eslint_wrapper_path, '--ext', '.js,.jsx,.ts,.tsx']
         else:
-            cmd = [eslint_path, '--ext', '.js,.jsx']
+            cmd = [eslint_path, '--ext', '.js,.jsx,.ts,.tsx']
 
         if format:
             cmd.append('--fix')
@@ -157,6 +157,7 @@ def yarn_check(file_list):
     This is a user prompt right now because there ARE cases where you can touch package.json
     without a Yarn lockfile change, e.g. Jest config changes, license changes, etc.
     """
+
     if file_list is None or os.environ.get('SKIP_YARN_CHECK'):
         return False
 
@@ -222,8 +223,16 @@ def js_lint_format(file_list=None):
     # manually exclude some bad files
     js_file_list = [x for x in js_file_list if '/javascript/example-project/' not in x]
 
-    return run_formatter([eslint_path, '--fix', ],
-                         js_file_list)
+    has_package_json_errors = False if 'package.json' not in file_list else run_formatter(
+        [
+            prettier_path,
+            '--write',
+        ], ['package.json']
+    )
+
+    has_errors = run_formatter([eslint_path, '--fix', ], js_file_list)
+
+    return has_errors or has_package_json_errors
 
 
 def js_test(file_list=None):
@@ -240,7 +249,7 @@ def js_test(file_list=None):
 
     has_errors = False
     if js_file_list:
-        status = Popen(['yarn', 'test-precommit'] + js_file_list).wait()
+        status = Popen(['./bin/yarn', 'test-precommit'] + js_file_list).wait()
         has_errors = status != 0
 
     return has_errors

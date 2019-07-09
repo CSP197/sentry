@@ -8,6 +8,7 @@ const theme = {
   offWhite2: '#E7E1EC',
   whiteDark: '#fbfbfc',
   white: '#FFFFFF',
+  foreground: '#493E54',
 
   gray1: '#BDB4C7',
   gray2: '#9585A3',
@@ -61,20 +62,20 @@ const theme = {
   borderLight: '#E2DBE8',
   borderDark: '#D1CAD8',
   borderRadius: '4px',
+  borderRadiusBottom: '0 0 4px 4px',
   headerSelectorRowHeight: 44,
+  headerSelectorLabelHeight: 28,
 
   dropShadowLight: '0 2px 0 rgba(37, 11, 54, 0.04)',
   dropShadowHeavy: '0 1px 4px 1px rgba(47,40,55,0.08), 0 4px 16px 0 rgba(47,40,55,0.12)',
 
   background: '#fff',
+  placeholderBackground: '#f5f5f5',
 
   // Try to keep these ordered plz
   zIndex: {
     header: 1000,
     dropdown: 1001,
-    globalSelectionHeader: 1002,
-    sidebar: 1003,
-    orgAndUserMenu: 1004,
 
     dropdownAutocomplete: {
       // needs to be below actor but above other page elements (e.g. pagination)
@@ -86,11 +87,20 @@ const theme = {
       actor: 1008,
     },
 
-    // Sentry user feedback modal
-    sentryErrorEmbed: 1009,
+    globalSelectionHeader: 1009,
+    sidebar: 1010,
+    orgAndUserMenu: 1011,
 
+    // Sentry user feedback modal
+    sentryErrorEmbed: 1090,
+
+    // If you change modal also update shared-components.less
+    // as the z-index for bootstrap modals lives there.
     modal: 10000,
     toast: 10001,
+
+    // tooltips and hovercards can be inside modals sometimes.
+    tooltip: 10002,
   },
 
   grid: 8,
@@ -141,10 +151,10 @@ theme.error = theme.red;
 theme.disabled = theme.gray1;
 
 theme.alert = {
-  default: {
+  muted: {
     backgroundLight: theme.offWhite,
     background: theme.gray1,
-    border: theme.borderLight,
+    border: theme.gray6,
   },
   info: {
     backgroundLight: theme.blueLightest,

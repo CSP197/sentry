@@ -10,6 +10,7 @@ import ProjectSelector from 'app/components/projectSelector';
 import InlineSvg from 'app/components/inlineSvg';
 
 import HeaderItem from 'app/components/organizations/headerItem';
+import MultipleSelectorSubmitRow from 'app/components/organizations/multipleSelectorSubmitRow';
 
 const rootContainerStyles = css`
   display: flex;
@@ -19,10 +20,12 @@ export default class MultipleProjectSelector extends React.PureComponent {
   static propTypes = {
     organization: SentryTypes.Organization.isRequired,
     value: PropTypes.array,
-    projects: PropTypes.array,
+    projects: PropTypes.array.isRequired,
+    nonMemberProjects: PropTypes.array.isRequired,
     onChange: PropTypes.func,
     onUpdate: PropTypes.func,
     multi: PropTypes.bool,
+    shouldForceProject: PropTypes.bool,
     forceProject: SentryTypes.Project,
   };
 
@@ -127,20 +130,40 @@ export default class MultipleProjectSelector extends React.PureComponent {
   };
 
   render() {
-    const {value, projects, multi, forceProject} = this.props;
+    const {
+      value,
+      projects,
+      nonMemberProjects,
+      multi,
+      organization,
+      shouldForceProject,
+      forceProject,
+    } = this.props;
     const selectedProjectIds = new Set(value);
 
-    const selected = projects.filter(project =>
+    const allProjects = [...projects, ...nonMemberProjects];
+
+    const selected = allProjects.filter(project =>
       selectedProjectIds.has(parseInt(project.id, 10))
     );
 
-    return forceProject ? (
+    // `forceProject` can be undefined if it is loading the project
+    // We are intentionally using an empty string as its "loading" state
+
+    return shouldForceProject ? (
       <StyledHeaderItem
         icon={<StyledInlineSvg src="icon-project" />}
         locked={true}
-        lockedMessage={t(`This issue is unique to the ${forceProject.slug} project`)}
+        lockedMessage={
+          forceProject
+            ? t(`This issue is unique to the ${forceProject.slug} project`)
+            : t('This issue is unique to a project')
+        }
+        settingsLink={
+          forceProject && `/settings/${organization.slug}/projects/${forceProject.slug}/`
+        }
       >
-        {forceProject.slug}
+        {forceProject ? forceProject.slug : ''}
       </StyledHeaderItem>
     ) : (
       <StyledProjectSelector
@@ -152,6 +175,11 @@ export default class MultipleProjectSelector extends React.PureComponent {
         onClose={this.handleClose}
         onMultiSelect={this.handleMultiSelect}
         rootClassName={rootContainerStyles}
+        menuFooter={({actions}) =>
+          this.state.hasChanges && (
+            <MultipleSelectorSubmitRow onSubmit={() => this.handleUpdate(actions)} />
+          )
+        }
       >
         {({
           getActorProps,
@@ -173,7 +201,6 @@ export default class MultipleProjectSelector extends React.PureComponent {
               hasSelected={hasSelected}
               hasChanges={this.state.hasChanges}
               isOpen={isOpen}
-              onSubmit={() => this.handleUpdate(actions)}
               onClear={this.handleClear}
               allowClear={multi}
               {...getActorProps()}
@@ -189,7 +216,7 @@ export default class MultipleProjectSelector extends React.PureComponent {
 
 const StyledProjectSelector = styled(ProjectSelector)`
   margin: 1px 0 0 -1px;
-  border-radius: 0 0 4px 4px;
+  border-radius: ${p => p.theme.borderRadiusBottom};
   width: 110%;
 `;
 

@@ -2,6 +2,8 @@ from __future__ import absolute_import
 
 import six
 
+from django.conf import settings
+
 from sentry import roles
 from sentry.app import quotas
 from sentry.api.serializers import Serializer, register, serialize
@@ -19,6 +21,7 @@ REQUIRE_SCRUB_DEFAULTS_DEFAULT = False
 SENSITIVE_FIELDS_DEFAULT = None
 SAFE_FIELDS_DEFAULT = None
 STORE_CRASH_REPORTS_DEFAULT = False
+ATTACHMENTS_ROLE_DEFAULT = settings.SENTRY_DEFAULT_ROLE
 REQUIRE_SCRUB_IP_ADDRESS_DEFAULT = False
 SCRAPE_JAVASCRIPT_DEFAULT = True
 TRUSTED_RELAYS_DEFAULT = None
@@ -96,7 +99,6 @@ class OrganizationSerializer(Serializer):
             'name': obj.name or obj.slug,
             'dateCreated': obj.date_added,
             'isEarlyAdopter': bool(obj.flags.early_adopter),
-            'disableNewVisibilityFeatures': bool(obj.flags.disable_new_visibility_features),
             'require2FA': bool(obj.flags.require_2fa),
             'avatar': avatar,
             'features': feature_list
@@ -119,13 +121,8 @@ class DetailedOrganizationSerializer(OrganizationSerializer):
         return super(DetailedOrganizationSerializer, self).get_attrs(item_list, user)
 
     def _project_list(self, organization, access):
-        member_project_ids = []
-        member_projects = []
-        for project in access.projects:
-            if project.status == ProjectStatus.VISIBLE:
-                member_project_ids.append(project.id)
-                member_projects.append(project)
-
+        member_projects = list(access.projects)
+        member_project_ids = [p.id for p in member_projects]
         other_projects = list(Project.objects.filter(
             organization=organization,
             status=ProjectStatus.VISIBLE,
@@ -137,13 +134,8 @@ class DetailedOrganizationSerializer(OrganizationSerializer):
         return project_list
 
     def _team_list(self, organization, access):
-        member_team_ids = []
-        member_teams = []
-        for team in access.teams:
-            if team.status == TeamStatus.VISIBLE:
-                member_team_ids.append(team.id)
-                member_teams.append(team)
-
+        member_teams = list(access.teams)
+        member_team_ids = [p.id for p in member_teams]
         other_teams = list(Team.objects.filter(
             organization=organization,
             status=TeamStatus.VISIBLE,
@@ -208,6 +200,7 @@ class DetailedOrganizationSerializer(OrganizationSerializer):
             'sensitiveFields': obj.get_option('sentry:sensitive_fields', SENSITIVE_FIELDS_DEFAULT) or [],
             'safeFields': obj.get_option('sentry:safe_fields', SAFE_FIELDS_DEFAULT) or [],
             'storeCrashReports': bool(obj.get_option('sentry:store_crash_reports', STORE_CRASH_REPORTS_DEFAULT)),
+            'attachmentsRole': six.text_type(obj.get_option('sentry:attachments_role', ATTACHMENTS_ROLE_DEFAULT)),
             'scrubIPAddresses': bool(obj.get_option('sentry:require_scrub_ip_address', REQUIRE_SCRUB_IP_ADDRESS_DEFAULT)),
             'scrapeJavaScript': bool(obj.get_option('sentry:scrape_javascript', SCRAPE_JAVASCRIPT_DEFAULT)),
             'trustedRelays': obj.get_option('sentry:trusted-relays', TRUSTED_RELAYS_DEFAULT) or [],

@@ -37,7 +37,7 @@ export default class CommitRow extends React.Component {
           <Message>{this.renderMessage(message)}</Message>
           <Meta>
             {tct('[author] committed [timeago]', {
-              author: <strong>{author?.name || t('Unknown author')}</strong>,
+              author: <strong>{(author && author.name) || t('Unknown author')}</strong>,
               timeago: <TimeSince date={dateCreated} />,
             })}
           </Meta>
@@ -60,7 +60,7 @@ const Message = styled(TextOverflow)`
   font-weight: bold;
 `;
 
-const Meta = styled.p`
+const Meta = styled('p')`
   font-size: 13px;
   line-height: 1.5;
   margin: 0;

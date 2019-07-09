@@ -3,6 +3,7 @@ import $ from 'jquery';
 import {Client, Request, paramsToQueryArgs} from 'app/api';
 import GroupActions from 'app/actions/groupActions';
 import {PROJECT_MOVED} from 'app/constants/apiErrorCodes';
+import * as Sentry from '@sentry/browser';
 
 jest.unmock('app/api');
 
@@ -32,13 +33,13 @@ describe('api', function() {
       ).toEqual({query: 'is:unresolved'});
     });
 
-    it('should convert params w/o itemIds or query to undefined', function() {
+    it('should convert params w/o itemIds or query to empty object', function() {
       expect(
         paramsToQueryArgs({
           foo: 'bar',
           bar: 'baz', // paramsToQueryArgs ignores these
         })
-      ).toBeUndefined();
+      ).toEqual({});
     });
 
     it('should keep environment when query is provided', function() {
@@ -57,6 +58,29 @@ describe('api', function() {
           environment: null,
         })
       ).toEqual({query: 'is:unresolved'});
+    });
+
+    it('should handle non-empty projects', function() {
+      expect(
+        paramsToQueryArgs({
+          itemIds: [1, 2, 3],
+          project: [1],
+        })
+      ).toEqual({id: [1, 2, 3], project: [1]});
+
+      expect(
+        paramsToQueryArgs({
+          itemIds: [1, 2, 3],
+          project: [],
+        })
+      ).toEqual({id: [1, 2, 3]});
+
+      expect(
+        paramsToQueryArgs({
+          itemIds: [1, 2, 3],
+          project: null,
+        })
+      ).toEqual({id: [1, 2, 3]});
     });
   });
 
@@ -173,6 +197,22 @@ describe('api', function() {
         undefined
       );
     });
+
+    it('should apply project option', function() {
+      api.bulkUpdate({
+        orgId: '1337',
+        project: [99],
+        itemIds: [1, 2, 3],
+        data: {status: 'unresolved'},
+      });
+
+      expect(api._wrapRequest).toHaveBeenCalledTimes(1);
+      expect(api._wrapRequest).toHaveBeenCalledWith(
+        '/organizations/1337/issues/',
+        expect.objectContaining({query: {id: [1, 2, 3], project: [99]}}),
+        undefined
+      );
+    });
   });
 
   describe('merge()', function() {
@@ -215,6 +255,45 @@ describe('api', function() {
         expect.objectContaining({query: {query: 'is:resolved'}}),
         undefined
       );
+    });
+  });
+
+  describe('Sentry reporting', function() {
+    beforeEach(function() {
+      jest.spyOn($, 'ajax');
+
+      $.ajax.mockReset();
+      Sentry.captureException.mockClear();
+
+      $.ajax.mockImplementation(async ({error}) => {
+        await tick();
+        error({
+          status: 404,
+          statusText: 'Not Found',
+          responseJSON: {detail: 'Item was not found'},
+        });
+
+        return {};
+      });
+    });
+
+    it('reports correct error and stacktrace to Sentry', async function() {
+      api.request('/some/url/');
+      await tick();
+
+      const errorObjectSentryCalled = Sentry.captureException.mock.calls[0][0];
+      expect(errorObjectSentryCalled.name).toBe('NotFoundError');
+      expect(errorObjectSentryCalled.message).toBe('GET /some/url/ 404');
+
+      // First line of stack should be this test case
+      expect(errorObjectSentryCalled.stack.split('\n')[1]).toContain('api.spec.jsx');
+    });
+
+    it('reports correct error and stacktrace to Sentry when using promises', async function() {
+      await expect(
+        api.requestPromise('/some/url/')
+      ).rejects.toThrowErrorMatchingInlineSnapshot('"GET /some/url/ 404"');
+      expect(Sentry.captureException).toHaveBeenCalled();
     });
   });
 });

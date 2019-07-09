@@ -6,7 +6,6 @@ import TimeSince from 'app/components/timeSince';
 import Version from 'app/components/version';
 import VersionHoverCard from 'app/components/versionHoverCard';
 import Tooltip from 'app/components/tooltip';
-import {componentToString} from 'app/utils/componentToString';
 import {defined, toTitleCase} from 'app/utils';
 import {t} from 'app/locale';
 
@@ -44,14 +43,14 @@ const SeenInfo = createReactClass({
   },
 
   getTooltipTitle() {
-    const {date, dateGlobal, environment, title} = this.props;
+    const {date, dateGlobal, title, environment} = this.props;
 
-    return componentToString(
-      <div style={{width: 170}}>
+    return (
+      <div style={{width: '170px'}}>
         <div className="time-label">{title}</div>
         <dl className="flat">
           {environment && [
-            <dt key="0">{toTitleCase(environment)}</dt>,
+            <dt key="0">{toTitleCase(environment)}:</dt>,
             <dd key="0.1">
               <TimeSince date={date} />
               <br />
@@ -74,7 +73,7 @@ const SeenInfo = createReactClass({
         <dt key={0}>{t('When')}:</dt>
         {date ? (
           <dd key={1}>
-            <Tooltip title={this.getTooltipTitle()} tooltipOptions={{html: true}}>
+            <Tooltip title={this.getTooltipTitle()}>
               <TimeSince className="dotted-underline" date={date} />
             </Tooltip>
             <br />
@@ -84,7 +83,7 @@ const SeenInfo = createReactClass({
           </dd>
         ) : dateGlobal && environment === '' ? (
           <dd key={1}>
-            <Tooltip title={this.getTooltipTitle()} tooltipOptions={{html: true}}>
+            <Tooltip title={this.getTooltipTitle()}>
               <TimeSince date={dateGlobal} />
             </Tooltip>
             <br />
@@ -103,7 +102,12 @@ const SeenInfo = createReactClass({
               projectId={projectId}
               version={release.version}
             >
-              <Version orgId={orgId} projectId={projectId} version={release.version} />
+              <Version
+                orgId={orgId}
+                projectId={projectId}
+                version={release.version}
+                className="truncate"
+              />
             </VersionHoverCard>
           </dd>
         ) : !this.props.hasRelease ? (

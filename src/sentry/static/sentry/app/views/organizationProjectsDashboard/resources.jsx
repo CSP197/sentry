@@ -9,6 +9,10 @@ import ErrorRobot from 'app/components/errorRobot';
 import {Panel} from 'app/components/panels';
 import {t} from 'app/locale';
 
+import releasesImg from '../../../images/releases.svg';
+import breadcrumbsImg from '../../../images/breadcrumbs-generic.svg';
+import docsImg from '../../../images/code-arguments-tags-mirrored.svg';
+
 export default class Resources extends React.Component {
   static propTypes = {
     org: SentryTypes.Organization,
@@ -27,26 +31,26 @@ export default class Resources extends React.Component {
         </RobotPanel>
         <ResourcesSection>
           <h4>{t('Resources')}</h4>
-          <Flex justify={'space-between'}>
+          <Flex justify="space-between">
             <Flex width={3 / 10}>
               <ResourceCard
-                link={'https://blog.sentry.io/2018/03/06/the-sentry-workflow'}
-                imgUrl={'images/releases.svg'}
-                title={'The Sentry Workflow'}
+                link="https://blog.sentry.io/2018/03/06/the-sentry-workflow"
+                imgUrl={releasesImg}
+                title="The Sentry Workflow"
               />
             </Flex>
             <Flex width={3 / 10}>
               <ResourceCard
-                link={'https://sentry.io/vs/logging/'}
-                imgUrl={'images/breadcrumbs-generic.svg'}
-                title={'Sentry vs Logging'}
+                link="https://sentry.io/vs/logging/"
+                imgUrl={breadcrumbsImg}
+                title="Sentry vs Logging"
               />
             </Flex>
             <Flex width={3 / 10}>
               <ResourceCard
-                link={'https://docs.sentry.io/'}
-                imgUrl={'images/code-arguments-tags-mirrored.svg'}
-                title={'Docs'}
+                link="https://docs.sentry.io/"
+                imgUrl={docsImg}
+                title="Docs"
               />
             </Flex>
           </Flex>

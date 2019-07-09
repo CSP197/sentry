@@ -1,8 +1,10 @@
 from __future__ import absolute_import
 
 from sentry.coreapi import APIError
+from sentry.constants import SentryAppStatus
 from sentry.mediators.sentry_apps import Updater
-from sentry.models import SentryAppComponent
+from sentry.mediators.service_hooks.creator import expand_events
+from sentry.models import SentryAppComponent, ServiceHook
 from sentry.testutils import TestCase
 
 
@@ -17,7 +19,10 @@ class TestUpdater(TestCase):
             schema={'elements': [self.create_issue_link_schema()]},
         )
 
-        self.updater = Updater(sentry_app=self.sentry_app)
+        self.updater = Updater(
+            sentry_app=self.sentry_app,
+            user=self.user,
+        )
 
     def test_updates_name(self):
         self.updater.name = 'A New Thing'
@@ -37,7 +42,7 @@ class TestUpdater(TestCase):
             scopes=('project:read',),
             published=True,
         )
-        updater = Updater(sentry_app=sentry_app)
+        updater = Updater(sentry_app=sentry_app, user=self.user)
         updater.scopes = ('project:read', 'project:write', )
 
         with self.assertRaises(APIError):
@@ -49,10 +54,24 @@ class TestUpdater(TestCase):
             organization=self.org,
             scopes=('project:read',),
         )
-        updater = Updater(sentry_app=sentry_app)
+        updater = Updater(sentry_app=sentry_app, user=self.user)
         updater.events = ('issue',)
         with self.assertRaises(APIError):
             updater.call()
+
+    def test_updates_service_hook_events(self):
+        sentry_app = self.create_sentry_app(
+            name='sentry',
+            organization=self.org,
+            scopes=('project:read', 'event:read',),
+            events=('event.alert',),
+        )
+        self.create_sentry_app_installation(slug='sentry')
+        updater = Updater(sentry_app=sentry_app, events=('issue',), user=self.user)
+        updater.call()
+        assert set(sentry_app.events) == expand_events(['issue'])
+        service_hook = ServiceHook.objects.filter(application=sentry_app.application)[0]
+        assert set(service_hook.events) == expand_events(['issue'])
 
     def test_updates_webhook_url(self):
         self.updater.webhook_url = 'http://example.com/hooks'
@@ -84,4 +103,15 @@ class TestUpdater(TestCase):
     def test_updates_overview(self):
         self.updater.overview = 'Description of my very cool application'
         self.updater.call()
-        assert self.updater.overview == 'Description of my very cool application'
+        assert self.sentry_app.overview == 'Description of my very cool application'
+
+    def test_update_status_if_superuser(self):
+        self.updater.status = 'published'
+        self.user.is_superuser = True
+        self.updater.call()
+        assert self.sentry_app.status == SentryAppStatus.PUBLISHED
+
+    def test_doesnt_update_status_if_not_superuser(self):
+        self.updater.status = 'published'
+        self.updater.call()
+        assert self.sentry_app.status == SentryAppStatus.UNPUBLISHED

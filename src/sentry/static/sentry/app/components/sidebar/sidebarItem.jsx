@@ -4,10 +4,10 @@ import React from 'react';
 import styled, {css} from 'react-emotion';
 
 import HookOrDefault from 'app/components/hookOrDefault';
+import Tooltip from 'app/components/tooltip';
 
-import Link from '../link';
+import Link from '../links/link';
 import TextOverflow from '../textOverflow';
-import Tooltip from '../tooltip';
 
 const LabelHook = HookOrDefault({
   hookName: 'sidebar:item-label',
@@ -82,11 +82,7 @@ class SidebarItem extends React.Component {
     const placement = isTop ? 'bottom' : 'right';
 
     return (
-      <Tooltip
-        disabled={!collapsed}
-        title={label}
-        tooltipOptions={{placement, html: true}}
-      >
+      <Tooltip disabled={!collapsed} title={label} placement={placement}>
         <StyledSidebarItem
           data-test-id={this.props['data-test-id']}
           active={active || isActiveRouter}
@@ -97,14 +93,13 @@ class SidebarItem extends React.Component {
         >
           <SidebarItemWrapper>
             <SidebarItemIcon>{icon}</SidebarItemIcon>
-            {!collapsed &&
-              !isTop && (
-                <SidebarItemLabel>
-                  <LabelHook id={this.props.id}>
-                    <TextOverflow>{label}</TextOverflow>
-                  </LabelHook>
-                </SidebarItemLabel>
-              )}
+            {!collapsed && !isTop && (
+              <SidebarItemLabel>
+                <LabelHook id={this.props.id}>
+                  <TextOverflow>{label}</TextOverflow>
+                </LabelHook>
+              </SidebarItemLabel>
+            )}
             {badge > 0 && (
               <SidebarItemBadge collapsed={collapsed}>{badge}</SidebarItemBadge>
             )}

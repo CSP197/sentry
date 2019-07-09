@@ -18,12 +18,14 @@ import Button from 'app/components/button';
 import CircleIndicator from 'app/components/circleIndicator';
 import Form from 'app/views/settings/components/forms/form';
 import JsonForm from 'app/views/settings/components/forms/jsonForm';
+import Field from 'app/views/settings/components/forms/field';
 import {PanelItem} from 'app/components/panels';
 import Qrcode from 'app/components/qrcode';
 import RemoveConfirm from 'app/views/settings/account/accountSecurity/components/removeConfirm';
 import SettingsPageHeader from 'app/views/settings/components/settingsPageHeader';
 import TextBlock from 'app/views/settings/components/text/textBlock';
-import U2fsign from 'app/components/u2fsign';
+import U2fsign from 'app/components/u2f/u2fsign';
+import TextCopyInput from 'app/views/settings/components/forms/textCopyInput';
 
 const ENDPOINT = '/users/me/authenticators/';
 const PENDING_INVITE = 'pending-invite';
@@ -52,6 +54,11 @@ const getFields = ({authenticator, hasSentCode, onSmsReset, onSmsSubmit, onU2fTa
           <Qrcode code={authenticator.qrcode} />
         </PanelItem>
       ),
+      () => (
+        <Field key="secret" label={t('Authenticator secret')}>
+          <TextCopyInput>{authenticator.secret}</TextCopyInput>
+        </Field>
+      ),
       ...form,
       () => (
         <PanelItem key="confirm" justify="flex-end" p={2}>
@@ -78,7 +85,7 @@ const getFields = ({authenticator, hasSentCode, onSmsReset, onSmsSubmit, onU2fTa
         visible: () => hasSentCode,
       },
       () => (
-        <PanelItem key="sms-footer" justify="flex-end" p={2} pr={'36px'}>
+        <PanelItem key="sms-footer" justify="flex-end" p={2} pr="36px">
           {hasSentCode && (
             <Button css={{marginRight: 6}} onClick={onSmsReset}>
               {t('Start Over')}
@@ -386,19 +393,18 @@ class AccountSecurityEnroll extends AsyncView {
 
         <TextBlock>{authenticator.description}</TextBlock>
 
-        {authenticator.form &&
-          !!authenticator.form.length && (
-            <Form
-              apiMethod="POST"
-              onFieldChange={this.handleFieldChange}
-              apiEndpoint={endpoint}
-              onSubmit={this.handleSubmit}
-              initialData={{...defaultValues, ...authenticator}}
-              hideFooter
-            >
-              <JsonForm {...this.props} forms={[{title: 'Configuration', fields}]} />
-            </Form>
-          )}
+        {authenticator.form && !!authenticator.form.length && (
+          <Form
+            apiMethod="POST"
+            onFieldChange={this.handleFieldChange}
+            apiEndpoint={endpoint}
+            onSubmit={this.handleSubmit}
+            initialData={{...defaultValues, ...authenticator}}
+            hideFooter
+          >
+            <JsonForm {...this.props} forms={[{title: 'Configuration', fields}]} />
+          </Form>
+        )}
       </div>
     );
   }

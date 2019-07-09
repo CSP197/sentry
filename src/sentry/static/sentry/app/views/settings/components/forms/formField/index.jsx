@@ -17,7 +17,7 @@ import returnButton from 'app/views/settings/components/forms/returnButton';
 import {sanitizeQuerySelector} from 'app/utils/sanitizeQuerySelector';
 import space from 'app/styles/space';
 
-const FormFieldErrorReason = styled.div`
+const FormFieldErrorReason = styled('div')`
   color: ${p => p.theme.redDark};
   position: absolute;
   right: 2px;
@@ -48,12 +48,12 @@ const FormFieldErrorReason = styled.div`
   }
 `;
 
-const FormFieldError = styled.div`
+const FormFieldError = styled('div')`
   color: ${p => p.theme.redDark};
   animation: ${p => pulse(1.15)} 1s ease infinite;
 `;
 
-const FormFieldIsSaved = styled.div`
+const FormFieldIsSaved = styled('div')`
   color: ${p => p.theme.green};
   animation: ${fadeOut} 0.3s ease 2s 1 forwards;
   position: absolute;
@@ -214,6 +214,11 @@ class FormField extends React.Component {
     saveMessageAlertType: PropTypes.oneOf(['', 'info', 'warning', 'success', 'error']),
 
     /**
+     * A function producing an optional component with extra information.
+     */
+    selectionInfoFunction: PropTypes.func,
+
+    /**
      * Should hide error message?
      */
     hideErrorMessage: PropTypes.bool,
@@ -364,6 +369,7 @@ class FormField extends React.Component {
       saveOnBlur,
       saveMessage,
       saveMessageAlertType,
+      selectionInfoFunction,
 
       // Don't pass `defaultValue` down to input fields, will be handled in form model
       // eslint-disable-next-line no-unused-vars
@@ -436,6 +442,19 @@ class FormField extends React.Component {
             </FieldControl>
           )}
         </Field>
+        {selectionInfoFunction && (
+          <Observer>
+            {() => {
+              const error = this.getError();
+              const value = model.getValue(name);
+              return (
+                ((typeof props.visible === 'function' ? props.visible(props) : true) &&
+                  selectionInfoFunction({...props, error, value})) ||
+                null
+              );
+            }}
+          </Observer>
+        )}
         {saveOnBlurFieldOverride && (
           <Observer>
             {() => {

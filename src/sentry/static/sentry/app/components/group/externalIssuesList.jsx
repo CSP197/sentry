@@ -4,9 +4,8 @@ import PropTypes from 'prop-types';
 import withApi from 'app/utils/withApi';
 import withOrganization from 'app/utils/withOrganization';
 import AsyncComponent from 'app/components/asyncComponent';
-import ExternalIssueActions, {
-  SentryAppExternalIssueActions,
-} from 'app/components/group/externalIssueActions';
+import ExternalIssueActions from 'app/components/group/externalIssueActions';
+import SentryAppExternalIssueActions from 'app/components/group/sentryAppExternalIssueActions';
 import IssueSyncListElement from 'app/components/issueSyncListElement';
 import AlertLink from 'app/components/alertLink';
 import SentryTypes from 'app/sentryTypes';
@@ -14,7 +13,9 @@ import PluginActions from 'app/components/group/pluginActions';
 import {Box} from 'grid-emotion';
 import {t} from 'app/locale';
 import SentryAppInstallationStore from 'app/stores/sentryAppInstallationsStore';
+import SentryAppComponentsStore from 'app/stores/sentryAppComponentsStore';
 import ExternalIssueStore from 'app/stores/externalIssueStore';
+import ErrorBoundary from 'app/components/errorBoundary';
 
 class ExternalIssueList extends AsyncComponent {
   static propTypes = {
@@ -22,6 +23,7 @@ class ExternalIssueList extends AsyncComponent {
     group: SentryTypes.Group.isRequired,
     project: SentryTypes.Project.isRequired,
     organization: SentryTypes.Organization.isRequired,
+    event: SentryTypes.Event,
     orgId: PropTypes.string,
   };
 
@@ -46,6 +48,7 @@ class ExternalIssueList extends AsyncComponent {
     this.unsubscribables = [
       SentryAppInstallationStore.listen(this.onSentryAppInstallationChange),
       ExternalIssueStore.listen(this.onExternalIssueChange),
+      SentryAppComponentsStore.listen(this.onSentryAppComponentsChange),
     ];
 
     this.fetchSentryAppData();
@@ -64,6 +67,11 @@ class ExternalIssueList extends AsyncComponent {
     this.setState({externalIssues});
   };
 
+  onSentryAppComponentsChange = sentryAppComponents => {
+    const components = sentryAppComponents.filter(c => c.type === 'issue-link');
+    this.setState({components});
+  };
+
   // We want to do this explicitly so that we can handle errors gracefully,
   // instead of the entire component not rendering.
   //
@@ -72,26 +80,9 @@ class ExternalIssueList extends AsyncComponent {
   // control over those services.
   //
   fetchSentryAppData() {
-    const {api, orgId, group, project, organization} = this.props;
+    const {api, group, project, organization} = this.props;
 
     if (project && project.id && organization) {
-      const features = new Set(organization.features);
-
-      if (!features.has('sentry-apps')) {
-        return;
-      }
-
-      api
-        .requestPromise(
-          `/organizations/${orgId}/sentry-app-components/?filter=issue-link&projectId=${project.id}`
-        )
-        .then(data => {
-          this.setState({components: data});
-        })
-        .catch(error => {
-          return;
-        });
-
       api
         .requestPromise(`/groups/${group.id}/external-issues/`)
         .then(data => {
@@ -125,27 +116,30 @@ class ExternalIssueList extends AsyncComponent {
   renderSentryAppIssues() {
     const {externalIssues, sentryAppInstallations, components} = this.state;
     const {group} = this.props;
-    const issueLinkComponents = components.filter(c => c.type === 'issue-link');
 
-    if (issueLinkComponents.length == 0) {
+    if (components.length === 0) {
       return null;
     }
 
-    return issueLinkComponents.map(component => {
+    return components.map(component => {
       const {sentryApp} = component;
       const installation = sentryAppInstallations.find(
-        i => i.sentryApp.uuid === sentryApp.uuid
+        i => i.app.uuid === sentryApp.uuid
       );
-      const issue = (externalIssues || []).find(i => i.serviceType == sentryApp.slug);
+
+      const issue = (externalIssues || []).find(i => i.serviceType === sentryApp.slug);
 
       return (
-        <SentryAppExternalIssueActions
-          key={sentryApp.slug}
-          group={group}
-          sentryAppComponent={component}
-          sentryAppInstallation={installation}
-          externalIssue={issue}
-        />
+        <ErrorBoundary key={sentryApp.slug} mini>
+          <SentryAppExternalIssueActions
+            key={sentryApp.slug}
+            group={group}
+            event={this.props.event}
+            sentryAppComponent={component}
+            sentryAppInstallation={installation}
+            externalIssue={issue}
+          />
+        </ErrorBoundary>
       );
     });
   }
@@ -190,7 +184,7 @@ class ExternalIssueList extends AsyncComponent {
           </h6>
           <AlertLink
             icon="icon-generic-box"
-            priority="default"
+            priority="muted"
             size="small"
             to={`/settings/${this.props.orgId}/integrations`}
           >

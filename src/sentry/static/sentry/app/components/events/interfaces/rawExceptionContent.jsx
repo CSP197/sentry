@@ -50,8 +50,10 @@ class RawExceptionContent extends React.Component {
   getAppleCrashReportEndpoint() {
     const {type, organization, projectId, eventId} = this.props;
 
-    const minified = type == 'minified';
-    return `/projects/${organization.slug}/${projectId}/events/${eventId}/apple-crash-report?minified=${minified}`;
+    const minified = type === 'minified';
+    return `/projects/${
+      organization.slug
+    }/${projectId}/events/${eventId}/apple-crash-report?minified=${minified}`;
   }
 
   fetchAppleCrashReport() {
@@ -94,7 +96,7 @@ class RawExceptionContent extends React.Component {
           content = <LoadingIndicator />;
         } else if (this.state.error) {
           content = <LoadingError onRetry={this.fetchData} />;
-        } else if (!this.state.loading && this.state.crashReport != '') {
+        } else if (!this.state.loading && this.state.crashReport !== '') {
           content = <ClippedBox clipHeight={250}>{this.state.crashReport}</ClippedBox>;
           downloadButton = (
             <a

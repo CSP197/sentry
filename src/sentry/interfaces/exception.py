@@ -15,11 +15,9 @@ import six
 
 from django.conf import settings
 
-from sentry.interfaces.base import Interface, InterfaceValidationError, prune_empty_keys, RUST_RENORMALIZED_DEFAULT
-from sentry.interfaces.schemas import validate_and_default_interface
+from sentry.interfaces.base import Interface, prune_empty_keys
 from sentry.interfaces.stacktrace import Stacktrace, slim_frame_data
-from sentry.utils import json
-from sentry.utils.safe import get_path, trim
+from sentry.utils.safe import get_path
 
 _type_value_re = re.compile('^(\w+):(.*)$')
 
@@ -137,70 +135,19 @@ class Mechanism(Interface):
     """
 
     @classmethod
-    def to_python(cls, data, rust_renormalized=RUST_RENORMALIZED_DEFAULT):
-        if rust_renormalized:
-            for key in (
-                'type',
-                'synthetic',
-                'description',
-                'help_link',
-                'handled',
-                'data',
-                'meta',
-            ):
-                data.setdefault(key, None)
+    def to_python(cls, data):
+        for key in (
+            'type',
+            'synthetic',
+            'description',
+            'help_link',
+            'handled',
+            'data',
+            'meta',
+        ):
+            data.setdefault(key, None)
 
-            return cls(**data)
-
-        data = upgrade_legacy_mechanism(data)
-        is_valid, errors = validate_and_default_interface(data, cls.path)
-        if not is_valid:
-            raise InterfaceValidationError("Invalid mechanism")
-
-        if not data.get('type'):
-            raise InterfaceValidationError("No 'type' present")
-
-        mechanism_meta = data.get('meta') or {}
-        mach_exception = mechanism_meta.get('mach_exception')
-        if mach_exception is not None:
-            mach_exception = prune_empty_keys({
-                'exception': mach_exception['exception'],
-                'code': mach_exception['code'],
-                'subcode': mach_exception['subcode'],
-                'name': mach_exception.get('name'),
-            })
-
-        signal = mechanism_meta.get('signal')
-        if signal is not None:
-            signal = prune_empty_keys({
-                'number': signal['number'],
-                'code': signal.get('code'),
-                'name': signal.get('name'),
-                'code_name': signal.get('code_name'),
-            })
-
-        errno = mechanism_meta.get('errno')
-        if errno is not None:
-            errno = prune_empty_keys({
-                'number': errno['number'],
-                'name': errno.get('name'),
-            })
-
-        kwargs = {
-            'type': trim(data['type'], 128),
-            'synthetic': data.get('synthetic'),
-            'description': trim(data.get('description'), 1024),
-            'help_link': trim(data.get('help_link'), 1024),
-            'handled': data.get('handled'),
-            'data': trim(data.get('data'), 4096),
-            'meta': {
-                'errno': errno,
-                'mach_exception': mach_exception,
-                'signal': signal,
-            },
-        }
-
-        return cls(**kwargs)
+        return cls(**data)
 
     def to_json(self):
         return prune_empty_keys({
@@ -282,20 +229,11 @@ class SingleException(Interface):
     grouping_variants = ['system', 'app']
 
     @classmethod
-    def to_python(cls, data, slim_frames=True, rust_renormalized=RUST_RENORMALIZED_DEFAULT):
-        if not rust_renormalized:
-            is_valid, errors = validate_and_default_interface(data, cls.path)
-            if not is_valid:
-                raise InterfaceValidationError("Invalid exception")
-
-            if not (data.get('type') or data.get('value')):
-                raise InterfaceValidationError("No 'type' or 'value' present")
-
+    def to_python(cls, data, slim_frames=True):
         if get_path(data, 'stacktrace', 'frames', filter=True):
             stacktrace = Stacktrace.to_python(
                 data['stacktrace'],
                 slim_frames=slim_frames,
-                rust_renormalized=rust_renormalized
             )
         else:
             stacktrace = None
@@ -303,7 +241,6 @@ class SingleException(Interface):
         if get_path(data, 'raw_stacktrace', 'frames', filter=True):
             raw_stacktrace = Stacktrace.to_python(
                 data['raw_stacktrace'], slim_frames=slim_frames, raw=True,
-                rust_renormalized=rust_renormalized
             )
         else:
             raw_stacktrace = None
@@ -311,31 +248,18 @@ class SingleException(Interface):
         type = data.get('type')
         value = data.get('value')
 
-        if not rust_renormalized:
-            if isinstance(value, six.string_types):
-                if type is None:
-                    m = _type_value_re.match(value)
-                    if m:
-                        type = m.group(1)
-                        value = m.group(2).strip()
-            elif value is not None:
-                value = json.dumps(value)
-
-            value = trim(value, 4096)
-
         if data.get('mechanism'):
-            mechanism = Mechanism.to_python(data['mechanism'],
-                                            rust_renormalized=rust_renormalized)
+            mechanism = Mechanism.to_python(data['mechanism'])
         else:
             mechanism = None
 
         kwargs = {
-            'type': trim(type, 128),
+            'type': type,
             'value': value,
-            'module': trim(data.get('module'), 128),
+            'module': data.get('module'),
             'mechanism': mechanism,
             'stacktrace': stacktrace,
-            'thread_id': trim(data.get('thread_id'), 40),
+            'thread_id': data.get('thread_id'),
             'raw_stacktrace': raw_stacktrace,
         }
 
@@ -365,18 +289,19 @@ class SingleException(Interface):
             'raw_stacktrace': raw_stacktrace,
         })
 
-    def get_api_context(self, is_public=False):
+    def get_api_context(self, is_public=False, platform=None):
         mechanism = isinstance(self.mechanism, Mechanism) and \
-            self.mechanism.get_api_context(is_public=is_public) or \
+            self.mechanism.get_api_context(is_public=is_public, platform=platform) or \
             self.mechanism or None
 
         if self.stacktrace:
-            stacktrace = self.stacktrace.get_api_context(is_public=is_public)
+            stacktrace = self.stacktrace.get_api_context(is_public=is_public, platform=platform)
         else:
             stacktrace = None
 
         if self.raw_stacktrace:
-            raw_stacktrace = self.raw_stacktrace.get_api_context(is_public=is_public)
+            raw_stacktrace = self.raw_stacktrace.get_api_context(
+                is_public=is_public, platform=platform)
         else:
             raw_stacktrace = None
 
@@ -390,12 +315,13 @@ class SingleException(Interface):
             'rawStacktrace': raw_stacktrace,
         }
 
-    def get_api_meta(self, meta, is_public=False):
-        mechanism_meta = self.mechanism.get_api_meta(meta['mechanism'], is_public=is_public) \
+    def get_api_meta(self, meta, is_public=False, platform=None):
+        mechanism_meta = self.mechanism.get_api_meta(
+            meta['mechanism'], is_public=is_public, platform=platform) \
             if isinstance(self.mechanism, Mechanism) and meta.get('mechanism') \
             else None
 
-        stacktrace_meta = self.stacktrace.get_api_meta(meta, is_public=is_public) \
+        stacktrace_meta = self.stacktrace.get_api_meta(meta, is_public=is_public, platform=platform) \
             if self.stacktrace and meta.get('stacktrace') \
             else None
 
@@ -459,42 +385,14 @@ class Exception(Interface):
         return len(self.exceptions())
 
     @classmethod
-    def to_python(cls, data, rust_renormalized=RUST_RENORMALIZED_DEFAULT):
-        if not rust_renormalized:
-            if data and 'values' not in data and 'exc_omitted' not in data:
-                data = {"values": [data]}
-
-        values = get_path(data, 'values', default=[])
-
-        if not rust_renormalized:
-            if not isinstance(values, list):
-                raise InterfaceValidationError("Invalid value for 'values'")
-
-        kwargs = {
-            'values': [
-                v and SingleException.to_python(
-                    v, slim_frames=False, rust_renormalized=rust_renormalized)
-                for v in values
+    def to_python(cls, data):
+        return cls(
+            values=[
+                v and SingleException.to_python(v, slim_frames=False)
+                for v in get_path(data, 'values', default=[])
             ],
-        }
-
-        if not rust_renormalized:
-            if data.get('exc_omitted'):
-                if len(data['exc_omitted']) != 2:
-                    raise InterfaceValidationError("Invalid value for 'exc_omitted'")
-                kwargs['exc_omitted'] = data['exc_omitted']
-            else:
-                kwargs['exc_omitted'] = None
-        else:
-            kwargs.setdefault('exc_omitted', None)
-
-        instance = cls(**kwargs)
-
-        if not rust_renormalized:
-            # we want to wait to slim things til we've reconciled in_app
-            slim_exception_data(instance)
-
-        return instance
+            exc_omitted=data.get('exc_omitted')
+        )
 
     # TODO(ja): Fix all following methods when to_python is refactored. All
     # methods below might throw if None exceptions are in ``values``.
@@ -505,16 +403,17 @@ class Exception(Interface):
             'exc_omitted': self.exc_omitted,
         })
 
-    def get_api_context(self, is_public=False):
+    def get_api_context(self, is_public=False, platform=None):
         return {
-            'values': [v.get_api_context(is_public=is_public) for v in self.values if v],
+            'values': [v.get_api_context(is_public=is_public, platform=platform)
+                       for v in self.values if v],
             'hasSystemFrames':
             any(v.stacktrace.get_has_system_frames() for v in self.values if v and v.stacktrace),
             'excOmitted':
             self.exc_omitted,
         }
 
-    def get_api_meta(self, meta, is_public=False):
+    def get_api_meta(self, meta, is_public=False, platform=None):
         if not meta:
             return meta
 
@@ -523,7 +422,8 @@ class Exception(Interface):
         for index, value in six.iteritems(values):
             exc = self.values[int(index)]
             if exc is not None:
-                result[index] = exc.get_api_meta(value, is_public=is_public)
+                result[index] = exc.get_api_meta(value, is_public=is_public,
+                                                 platform=platform)
 
         return {'values': result}
 
@@ -533,6 +433,9 @@ class Exception(Interface):
 
         output = []
         for exc in self.values:
+            if not exc:
+                continue
+
             output.append(u'{0}: {1}\n'.format(exc.type, exc.value))
             if exc.stacktrace:
                 output.append(

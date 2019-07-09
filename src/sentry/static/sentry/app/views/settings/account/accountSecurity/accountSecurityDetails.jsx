@@ -25,13 +25,13 @@ import U2fEnrolledDetails from 'app/views/settings/account/accountSecurity/compo
 
 const ENDPOINT = '/users/me/authenticators/';
 
-const DateLabel = styled.span`
+const DateLabel = styled('span')`
   font-weight: bold;
   margin-right: 6px;
   width: 100px;
 `;
 
-const Phone = styled.span`
+const Phone = styled('span')`
   font-weight: bold;
   margin-left: 6px;
 `;
@@ -158,13 +158,12 @@ class AccountSecurityDetails extends AsyncView {
           onRemoveU2fDevice={this.handleRemove}
         />
 
-        {authenticator.isEnrolled &&
-          authenticator.phone && (
-            <div css={{marginTop: 30}}>
-              {t('Confirmation codes are sent to the following phone number')}:
-              <Phone>{authenticator.phone}</Phone>
-            </div>
-          )}
+        {authenticator.isEnrolled && authenticator.phone && (
+          <div css={{marginTop: 30}}>
+            {t('Confirmation codes are sent to the following phone number')}:
+            <Phone>{authenticator.phone}</Phone>
+          </div>
+        )}
 
         <RecoveryCodes
           onRegenerateBackupCodes={onRegenerateBackupCodes}

@@ -8,9 +8,7 @@ import {t} from 'app/locale';
 const BetaTag = () => (
   <Tooltip
     title={t('This feature is in beta and may change in the future.')}
-    tooltipOptions={{
-      placement: 'right',
-    }}
+    position="right"
   >
     <StyledTag priority="beta" size="small">
       beta

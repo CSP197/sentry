@@ -9,7 +9,7 @@ import Avatar from 'app/components/avatar';
 import Button from 'app/components/button';
 import Confirm from 'app/components/confirm';
 import InlineSvg from 'app/components/inlineSvg';
-import Link from 'app/components/link';
+import Link from 'app/components/links/link';
 import LoadingIndicator from 'app/components/loadingIndicator';
 import SentryTypes from 'app/sentryTypes';
 import Tooltip from 'app/components/tooltip';
@@ -20,7 +20,7 @@ const UserName = styled(Link)`
   font-size: 16px;
 `;
 
-const Email = styled.div`
+const Email = styled('div')`
   color: ${p => p.theme.gray3};
   font-size: 14px;
 `;
@@ -146,17 +146,16 @@ export default class OrganizationMemberRow extends React.PureComponent {
                   </div>
                 )}
                 {isInviteSuccessful && <span>Sent!</span>}
-                {!isInviting &&
-                  !isInviteSuccessful &&
-                  canResend && (
-                    <ResendInviteButton
-                      priority="primary"
-                      size="xsmall"
-                      onClick={this.handleSendInvite}
-                    >
-                      {t('Resend invite')}
-                    </ResendInviteButton>
-                  )}
+                {!isInviting && !isInviteSuccessful && canResend && (
+                  <ResendInviteButton
+                    priority="primary"
+                    size="xsmall"
+                    onClick={this.handleSendInvite}
+                    data-test-id="resend-invite"
+                  >
+                    {t('Resend invite')}
+                  </ResendInviteButton>
+                )}
               </div>
             ) : (
               <div>
@@ -178,74 +177,70 @@ export default class OrganizationMemberRow extends React.PureComponent {
 
         {showRemoveButton || showLeaveButton ? (
           <Box px={2} w={140}>
-            {showRemoveButton &&
-              canRemoveMember && (
-                <Confirm
-                  message={tct('Are you sure you want to remove [name] from [orgName]?', {
-                    name,
-                    orgName,
-                  })}
-                  onConfirm={this.handleRemove}
-                  onSuccess={tct('Removed [name] from [orgName]', {
-                    name,
-                    orgName,
-                  })}
-                  onError={tct('Error removing [name] from [orgName]', {
-                    name,
-                    orgName,
-                  })}
-                >
-                  <Button icon="icon-circle-subtract" size="small" busy={this.state.busy}>
-                    {t('Remove')}
-                  </Button>
-                </Confirm>
-              )}
-
-            {showRemoveButton &&
-              !canRemoveMember && (
-                <Button
-                  disabled
-                  size="small"
-                  title={t('You do not have access to remove members')}
-                  icon="icon-circle-subtract"
-                >
+            {showRemoveButton && canRemoveMember && (
+              <Confirm
+                message={tct('Are you sure you want to remove [name] from [orgName]?', {
+                  name,
+                  orgName,
+                })}
+                onConfirm={this.handleRemove}
+                onSuccess={tct('Removed [name] from [orgName]', {
+                  name,
+                  orgName,
+                })}
+                onError={tct('Error removing [name] from [orgName]', {
+                  name,
+                  orgName,
+                })}
+              >
+                <Button icon="icon-circle-subtract" size="small" busy={this.state.busy}>
                   {t('Remove')}
                 </Button>
-              )}
+              </Confirm>
+            )}
 
-            {showLeaveButton &&
-              memberCanLeave && (
-                <Confirm
-                  message={tct('Are you sure you want to leave [orgName]?', {
-                    orgName,
-                  })}
-                  onConfirm={this.handleLeave}
-                  onSuccess={tct('Left [orgName]', {
-                    orgName,
-                  })}
-                  onError={tct('Error leaving [orgName]', {
-                    orgName,
-                  })}
-                >
-                  <Button priority="danger" size="small" icon="icon-exit">
-                    {t('Leave')}
-                  </Button>
-                </Confirm>
-              )}
+            {showRemoveButton && !canRemoveMember && (
+              <Button
+                disabled
+                size="small"
+                title={t('You do not have access to remove members')}
+                icon="icon-circle-subtract"
+              >
+                {t('Remove')}
+              </Button>
+            )}
 
-            {showLeaveButton &&
-              !memberCanLeave && (
-                <Button
-                  size="small"
-                  icon="icon-exit"
-                  disabled
-                  title={t(
-                    'You cannot leave the organization as you are the only owner.'
-                  )}
-                >
+            {showLeaveButton && memberCanLeave && (
+              <Confirm
+                message={tct('Are you sure you want to leave [orgName]?', {
+                  orgName,
+                })}
+                onConfirm={this.handleLeave}
+                onSuccess={tct('Left [orgName]', {
+                  orgName,
+                })}
+                onError={tct('Error leaving [orgName]', {
+                  orgName,
+                })}
+              >
+                <Button priority="danger" size="small" icon="icon-exit">
                   {t('Leave')}
                 </Button>
-              )}
+              </Confirm>
+            )}
+
+            {showLeaveButton && !memberCanLeave && (
+              <Button
+                size="small"
+                icon="icon-exit"
+                disabled
+                title={t(
+                  'You cannot leave this organization as you are the only organization owner.'
+                )}
+              >
+                {t('Leave')}
+              </Button>
+            )}
           </Box>
         ) : null}
       </PanelItem>

@@ -14,6 +14,7 @@ class SentryAppSerializer(Serializer):
         data = {
             'name': obj.name,
             'slug': obj.slug,
+            'author': obj.author,
             'scopes': obj.get_scopes(),
             'events': consolidate_events(obj.events),
             'status': obj.get_status_display(),
@@ -28,9 +29,22 @@ class SentryAppSerializer(Serializer):
         if is_active_superuser(env.request) or (
             hasattr(user, 'get_orgs') and obj.owner in user.get_orgs()
         ):
-            data.update({
-                'clientId': obj.application.client_id,
-                'clientSecret': obj.application.client_secret,
-            })
+            if obj.is_internal:
+                install = obj.installations.first()
+                data.update({
+                    'installation': {
+                        'uuid': install.uuid,
+                    },
+                    'token': install.api_token.token,
+                })
+            else:
+                data.update({
+                    'clientId': obj.application.client_id,
+                    'clientSecret': obj.application.client_secret,
+                    'owner': {
+                        'id': obj.owner.id,
+                        'slug': obj.owner.slug,
+                    },
+                })
 
         return data

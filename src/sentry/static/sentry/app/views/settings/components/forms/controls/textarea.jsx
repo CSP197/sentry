@@ -6,13 +6,12 @@ import isPropValid from '@emotion/is-prop-valid';
 
 import {inputStyles} from 'app/styles/input';
 
-const TextAreaControl = React.forwardRef(
-  ({autosize, rows, ...p}, ref) =>
-    autosize ? (
-      <TextareaAutosize async innerRef={ref} rows={rows ? rows : 2} {...p} />
-    ) : (
-      <textarea ref={ref} {...p} />
-    )
+const TextAreaControl = React.forwardRef(({autosize, rows, ...p}, ref) =>
+  autosize ? (
+    <TextareaAutosize async innerRef={ref} rows={rows ? rows : 2} {...p} />
+  ) : (
+    <textarea ref={ref} {...p} />
+  )
 );
 
 TextAreaControl.propTypes = {
@@ -24,6 +23,10 @@ TextAreaControl.propTypes = {
    * Number of rows to default to.
    */
   rows: PropTypes.number,
+  /**
+   * Requests monospace input
+   */
+  monospace: PropTypes.bool,
 };
 
 const propFilter = p => ['autosize', 'rows', 'maxRows'].includes(p) || isPropValid(p);

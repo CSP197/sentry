@@ -10,25 +10,15 @@ from __future__ import absolute_import
 
 __all__ = ('Stacktrace', )
 
-import re
 import six
-from itertools import islice, chain
 
 from django.conf import settings
 from django.utils.translation import ugettext as _
-from six.moves.urllib.parse import urlparse
 
 from sentry.app import env
-from sentry.interfaces.base import Interface, InterfaceValidationError, prune_empty_keys, RUST_RENORMALIZED_DEFAULT
-from sentry.interfaces.schemas import validate_and_default_interface
+from sentry.interfaces.base import Interface, prune_empty_keys
 from sentry.models import UserOption
-from sentry.utils.safe import trim, trim_dict
 from sentry.web.helpers import render_to_string
-
-
-# Native function trim re.  For now this is a simple hack until we have the
-# language hints in which will let us trim this down better.
-_native_function_trim_re = re.compile(r'^(.[^(]*)\(')
 
 
 def max_addr(cur, addr):
@@ -53,20 +43,6 @@ def trim_package(pkg):
     if pkg.endswith(('.dylib', '.so', '.a')):
         pkg = pkg.rsplit('.', 1)[0]
     return pkg
-
-
-def trim_function_name(func, platform):
-    # TODO(mitsuhiko): we actually want to use the language information here
-    # but we don't have that yet.
-    if platform in ('objc', 'cocoa', 'native'):
-        # objc function
-        if func.startswith(('[', '+[', '-[')):
-            return func
-        # c/c++ function hopefully
-        match = _native_function_trim_re.match(func.strip())
-        if match is not None:
-            return match.group(1).strip()
-    return func
 
 
 def to_hex_addr(addr):
@@ -214,143 +190,32 @@ class Frame(Interface):
     grouping_variants = ['system', 'app']
 
     @classmethod
-    def to_python(cls, data, raw=False, rust_renormalized=RUST_RENORMALIZED_DEFAULT):
-        if rust_renormalized:
-            for key in (
-                'abs_path',
-                'colno',
-                'context_line',
-                'data',
-                'errors',
-                'filename',
-                'function',
-                'image_addr',
-                'in_app',
-                'instruction_addr',
-                'lineno',
-                'module',
-                'package',
-                'platform',
-                'post_context',
-                'pre_context',
-                'symbol',
-                'symbol_addr',
-                'trust',
-                'vars',
-            ):
-                data.setdefault(key, None)
-            return cls(**data)
-
-        is_valid, errors = validate_and_default_interface(data, cls.path)
-        if not is_valid:
-            raise InterfaceValidationError("Invalid stack frame data.")
-
-        abs_path = data.get('abs_path')
-        filename = data.get('filename')
-        symbol = data.get('symbol')
-        function = data.get('function')
-        module = data.get('module')
-        package = data.get('package')
-
-        # For legacy reasons
-        if function in ('?', ''):
-            function = None
-
-        # For consistency reasons
-        if symbol in ('?', ''):
-            symbol = None
-
-        # Some of this processing should only be done for non raw frames
-        if not raw:
-            # absolute path takes priority over filename
-            # (in the end both will get set)
-            if not abs_path:
-                abs_path = filename
-                filename = None
-
-            if not filename and abs_path:
-                if is_url(abs_path):
-                    urlparts = urlparse(abs_path)
-                    if urlparts.path:
-                        filename = urlparts.path
-                    else:
-                        filename = abs_path
-                else:
-                    filename = abs_path
-
-        platform = data.get('platform')
-
-        context_locals = data.get('vars') or {}
-        if isinstance(context_locals, (list, tuple)):
-            context_locals = dict(enumerate(context_locals))
-        elif not isinstance(context_locals, dict):
-            context_locals = {}
-        context_locals = trim_dict(context_locals, object_hook=handle_nan)
-
-        # extra data is used purely by internal systems,
-        # so we dont trim it
-        extra_data = data.get('data') or {}
-        if isinstance(extra_data, (list, tuple)):
-            extra_data = dict(enumerate(extra_data))
-
-        # XXX: handle lines which were sent as 'null'
-        context_line = trim(data.get('context_line'), 256)
-        pre_context = data.get('pre_context', None)
-        if isinstance(pre_context, list) and pre_context:
-            pre_context = [c or '' for c in pre_context]
-        else:
-            pre_context = None
-
-        post_context = data.get('post_context', None)
-        if isinstance(post_context, list) and post_context:
-            post_context = [c or '' for c in post_context]
-        else:
-            post_context = None
-
-        if not context_line and (pre_context or post_context):
-            context_line = ''
-
-        in_app = validate_bool(data.get('in_app'), False)
-
-        kwargs = {
-            'abs_path': trim(abs_path, 2048),
-            'filename': trim(filename, 256),
-            'platform': platform,
-            'module': trim(module, 256),
-            'function': trim(function, 256),
-            'package': package,
-            'image_addr': to_hex_addr(data.get('image_addr')),
-            'symbol': trim(symbol, 256),
-            'symbol_addr': to_hex_addr(data.get('symbol_addr')),
-            'instruction_addr': to_hex_addr(data.get('instruction_addr')),
-            'trust': trim(data.get('trust'), 16),
-            'in_app': in_app,
-            'context_line': context_line,
-            # TODO(dcramer): trim pre/post_context
-            'pre_context': pre_context,
-            'post_context': post_context,
-            'vars': context_locals or None,
-            'data': extra_data or None,
-            'errors': data.get('errors'),
-        }
-
-        if data.get('lineno') is not None:
-            lineno = int(data['lineno'])
-            if lineno < 0:
-                lineno = None
-            kwargs['lineno'] = lineno
-        else:
-            kwargs['lineno'] = None
-
-        if data.get('colno') is not None:
-            colno = int(data['colno'])
-            if colno < 0:
-                colno = None
-            kwargs['colno'] = colno
-        else:
-            kwargs['colno'] = None
-
-        return cls(**kwargs)
+    def to_python(cls, data, raw=False):
+        for key in (
+            'abs_path',
+            'colno',
+            'context_line',
+            'data',
+            'errors',
+            'filename',
+            'function',
+            'raw_function',
+            'image_addr',
+            'in_app',
+            'instruction_addr',
+            'lineno',
+            'module',
+            'package',
+            'platform',
+            'post_context',
+            'pre_context',
+            'symbol',
+            'symbol_addr',
+            'trust',
+            'vars',
+        ):
+            data.setdefault(key, None)
+        return cls(**data)
 
     def to_json(self):
         return prune_empty_keys({
@@ -359,6 +224,7 @@ class Frame(Interface):
             'platform': self.platform or None,
             'module': self.module or None,
             'function': self.function or None,
+            'raw_function': self.raw_function or None,
             'package': self.package or None,
             'image_addr': self.image_addr,
             'symbol': self.symbol,
@@ -376,7 +242,9 @@ class Frame(Interface):
             'colno': self.colno
         })
 
-    def get_api_context(self, is_public=False, pad_addr=None):
+    def get_api_context(self, is_public=False, pad_addr=None, platform=None):
+        from sentry.stacktraces.functions import get_function_name_for_frame
+        function = get_function_name_for_frame(self, platform)
         data = {
             'filename': self.filename,
             'absPath': self.abs_path,
@@ -385,7 +253,8 @@ class Frame(Interface):
             'platform': self.platform,
             'instructionAddr': pad_hex_addr(self.instruction_addr, pad_addr),
             'symbolAddr': pad_hex_addr(self.symbol_addr, pad_addr),
-            'function': self.function,
+            'function': function,
+            'rawFunction': self.raw_function,
             'symbol': self.symbol,
             'context': get_context(
                 lineno=self.lineno,
@@ -402,7 +271,7 @@ class Frame(Interface):
         if not is_public:
             data['vars'] = self.vars
         # TODO(dcramer): abstract out this API
-        if self.data:
+        if self.data and 'sourcemap' in data:
             data.update(
                 {
                     'map': self.data['sourcemap'].rsplit('/', 1)[-1],
@@ -418,7 +287,7 @@ class Frame(Interface):
 
         return data
 
-    def get_meta_context(self, meta, is_public=False):
+    def get_meta_context(self, meta, is_public=False, platform=None):
         if not meta:
             return
 
@@ -603,67 +472,24 @@ class Stacktrace(Interface):
         return iter(self.frames)
 
     @classmethod
-    def to_python(cls, data, slim_frames=True, raw=False,
-                  rust_renormalized=RUST_RENORMALIZED_DEFAULT):
-        if rust_renormalized:
-            data = dict(data)
-            frame_list = []
-            for f in data.get('frames') or []:
-                # XXX(dcramer): handle PHP sending an empty array for a frame
-                frame_list.append(
-                    Frame.to_python(
-                        f or {},
-                        raw=raw,
-                        rust_renormalized=rust_renormalized))
-
-            data['frames'] = frame_list
-            data.setdefault('registers', None)
-            data.setdefault('frames_omitted', None)
-            return cls(**data)
-
-        is_valid, errors = validate_and_default_interface(data, cls.path)
-        if not is_valid:
-            raise InterfaceValidationError("Invalid stack frame data.")
-
-        # Trim down the frame list to a hard limit. Leave the last frame in place in case
-        # it's useful for debugging.
-        frameiter = data.get('frames') or []
-        if len(frameiter) > settings.SENTRY_STACKTRACE_FRAMES_HARD_LIMIT:
-            frameiter = chain(
-                islice(data['frames'], settings.SENTRY_STACKTRACE_FRAMES_HARD_LIMIT - 1), (data['frames'][-1],))
-
+    def to_python(cls, data, slim_frames=True, raw=False):
+        data = dict(data)
         frame_list = []
-
-        for f in frameiter:
-            if f is None:
-                continue
+        for f in data.get('frames') or []:
             # XXX(dcramer): handle PHP sending an empty array for a frame
-            frame_list.append(
-                Frame.to_python(
-                    f or {},
-                    raw=raw,
-                    rust_renormalized=rust_renormalized))
+            frame_list.append(Frame.to_python(f or {}, raw=raw))
 
-        kwargs = {
-            'frames': frame_list,
-        }
-
-        kwargs['registers'] = None
-        if data.get('registers') and isinstance(data['registers'], dict):
-            kwargs['registers'] = data.get('registers')
-
-        kwargs['frames_omitted'] = data.get('frames_omitted') or None
-
-        instance = cls(**kwargs)
-        if slim_frames:
-            slim_frame_data(instance)
-        return instance
+        data['frames'] = frame_list
+        data.setdefault('registers', None)
+        data.setdefault('frames_omitted', None)
+        return cls(**data)
 
     def get_has_system_frames(self):
         # This is a simplified logic from how the normalizer works.
         # Because this always works on normalized data we do not have to
         # consider the "all frames are in_app" case.  The normalizer lives
-        # in stacktraces.normalize_in_app which will take care of that.
+        # in stacktraces.normalize_stacktraces_for_grouping which will take
+        # care of that.
         return any(frame.in_app for frame in self.frames)
 
     def get_longest_address(self):
@@ -673,11 +499,12 @@ class Stacktrace(Interface):
             rv = max_addr(rv, frame.symbol_addr)
         return rv
 
-    def get_api_context(self, is_public=False):
+    def get_api_context(self, is_public=False, platform=None):
         longest_addr = self.get_longest_address()
 
         frame_list = [
-            f.get_api_context(is_public=is_public, pad_addr=longest_addr) for f in self.frames
+            f.get_api_context(is_public=is_public, pad_addr=longest_addr,
+                              platform=platform) for f in self.frames
         ]
 
         return {
@@ -687,7 +514,7 @@ class Stacktrace(Interface):
             'hasSystemFrames': self.get_has_system_frames(),
         }
 
-    def get_api_meta(self, meta, is_public=False):
+    def get_api_meta(self, meta, is_public=False, platform=None):
         if not meta:
             return meta
 
@@ -696,7 +523,8 @@ class Stacktrace(Interface):
             if index == '':
                 continue
             frame = self.frames[int(index)]
-            frame_meta[index] = frame.get_api_meta(value, is_public=is_public)
+            frame_meta[index] = frame.get_api_meta(value, is_public=is_public,
+                                                   platform=platform)
 
         return {
             '': meta.get(''),

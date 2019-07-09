@@ -1,17 +1,18 @@
 import $ from 'jquery';
 import {ThemeProvider} from 'emotion-theming';
+import {Tracing} from '@sentry/integrations';
+import {getCurrentHub} from '@sentry/browser';
+import {injectGlobal} from 'emotion';
 import Cookies from 'js-cookie';
 import PropTypes from 'prop-types';
 import React from 'react';
-import Reflux from 'reflux';
-import createReactClass from 'create-react-class';
 import keydown from 'react-keydown';
+import {get, isEqual} from 'lodash';
 
 import {openCommandPalette} from 'app/actionCreators/modal';
 import {t} from 'app/locale';
 import AlertActions from 'app/actions/alertActions';
 import Alerts from 'app/components/alerts';
-import ApiMixin from 'app/mixins/apiMixin';
 import AssistantHelper from 'app/components/assistant/helper';
 import ConfigStore from 'app/stores/configStore';
 import ErrorBoundary from 'app/components/errorBoundary';
@@ -22,9 +23,10 @@ import InstallWizard from 'app/views/installWizard';
 import LoadingIndicator from 'app/components/loadingIndicator';
 import NewsletterConsent from 'app/views/newsletterConsent';
 import OrganizationsStore from 'app/stores/organizationsStore';
-import theme from 'app/utils/theme';
 import getRouteStringFromRoutes from 'app/utils/getRouteStringFromRoutes';
-import * as tracing from 'app/utils/tracing';
+import theme from 'app/utils/theme';
+import withApi from 'app/utils/withApi';
+import withConfig from 'app/utils/withConfig';
 
 function getAlertTypeForProblem(problem) {
   switch (problem.severity) {
@@ -35,37 +37,36 @@ function getAlertTypeForProblem(problem) {
   }
 }
 
-const App = createReactClass({
-  displayName: 'App',
-
-  propTypes: {
+class App extends React.Component {
+  static propTypes = {
+    api: PropTypes.object.isRequired,
     routes: PropTypes.array,
-  },
+    config: PropTypes.object.isRequired,
+  };
 
-  childContextTypes: {
+  static childContextTypes = {
     location: PropTypes.object,
-  },
+  };
 
-  mixins: [ApiMixin, Reflux.listenTo(ConfigStore, 'onConfigStoreChange')],
-
-  getInitialState() {
+  constructor(props) {
+    super(props);
     const user = ConfigStore.get('user');
-    return {
+    this.state = {
       loading: false,
       error: false,
       needsUpgrade: user && user.isSuperuser && ConfigStore.get('needsUpgrade'),
       newsletterConsentPrompt: user && user.flags.newsletter_consent_prompt,
     };
-  },
+  }
 
   getChildContext() {
     return {
       location: this.props.location,
     };
-  },
+  }
 
   componentWillMount() {
-    this.api.request('/organizations/', {
+    this.props.api.request('/organizations/', {
       query: {
         member: '1',
       },
@@ -83,7 +84,7 @@ const App = createReactClass({
       },
     });
 
-    this.api.request('/internal/health/', {
+    this.props.api.request('/internal/health/', {
       success: data => {
         if (data && data.problems) {
           data.problems.forEach(problem => {
@@ -116,8 +117,8 @@ const App = createReactClass({
         return;
       }
 
-      const code = jqXHR?.responseJSON?.detail?.code;
-      const extra = jqXHR?.responseJSON?.detail?.extra;
+      const code = get(jqXHR, 'responseJSON.detail.code');
+      const extra = get(jqXHR, 'responseJSON.detail.extra');
 
       // 401s can also mean sudo is required or it's a request that is allowed to fail
       // Ignore if these are the cases
@@ -141,30 +142,31 @@ const App = createReactClass({
     if (user) {
       HookStore.get('analytics:init-user').map(cb => cb(user));
     }
-  },
+  }
 
   componentDidMount() {
     this.updateTracing();
-  },
+  }
 
-  componentDidUpdate() {
+  componentDidUpdate(prevProps) {
+    const {config} = this.props;
+    if (!isEqual(config, prevProps.config)) {
+      this.handleConfigStoreChange(config);
+    }
+
     this.updateTracing();
-  },
+  }
 
   componentWillUnmount() {
     OrganizationsStore.load([]);
-  },
+  }
 
   updateTracing() {
-    tracing.startTransaction();
-
     const route = getRouteStringFromRoutes(this.props.routes);
-    if (route) {
-      tracing.setRoute(route);
-    }
-  },
+    Tracing.startTrace(getCurrentHub(), route);
+  }
 
-  onConfigStoreChange(config) {
+  handleConfigStoreChange(config) {
     const newState = {};
     if (config.needsUpgrade !== undefined) {
       newState.needsUpgrade = config.needsUpgrade;
@@ -175,27 +177,27 @@ const App = createReactClass({
     if (Object.keys(newState).length > 0) {
       this.setState(newState);
     }
-  },
+  }
 
   @keydown('meta+shift+p', 'meta+k')
   openCommandPalette(e) {
     openCommandPalette();
     e.preventDefault();
     e.stopPropagation();
-  },
+  }
 
   onConfigured() {
     this.setState({needsUpgrade: false});
-  },
+  }
 
-  onNewsletterConsent() {
+  handleNewsletterConsent = () => {
     // this is somewhat hackish
     this.setState({
       newsletterConsentPrompt: false,
     });
-  },
+  };
 
-  handleGlobalModalClose() {
+  handleGlobalModalClose = () => {
     if (!this.mainContainerRef) {
       return;
     }
@@ -205,7 +207,7 @@ const App = createReactClass({
 
     // Focus the main container to get hotkeys to keep working after modal closes
     this.mainContainerRef.focus();
-  },
+  };
 
   renderBody() {
     const {needsUpgrade, newsletterConsentPrompt} = this.state;
@@ -214,11 +216,11 @@ const App = createReactClass({
     }
 
     if (newsletterConsentPrompt) {
-      return <NewsletterConsent onSubmitSuccess={this.onNewsletterConsent} />;
+      return <NewsletterConsent onSubmitSuccess={this.handleNewsletterConsent} />;
     }
 
     return this.props.children;
-  },
+  }
 
   render() {
     if (this.state.loading) {
@@ -244,7 +246,15 @@ const App = createReactClass({
         </div>
       </ThemeProvider>
     );
-  },
-});
+  }
+}
 
-export default App;
+export default withApi(withConfig(App));
+
+injectGlobal`
+body {
+  .sentry-error-embed-wrapper {
+    z-index: ${theme.zIndex.sentryErrorEmbed};
+  }
+}
+`;

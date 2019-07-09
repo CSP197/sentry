@@ -1,16 +1,12 @@
-import {pick, isEqual} from 'lodash';
+import {flatten, isEqual, pick, partition} from 'lodash';
 import {withRouter} from 'react-router';
 import PropTypes from 'prop-types';
 import React from 'react';
 import styled from 'react-emotion';
 
-import {
-  DATE_TIME_KEYS,
-  URL_PARAM,
-} from 'app/components/organizations/globalSelectionHeader/constants';
+import {DATE_TIME_KEYS, URL_PARAM} from 'app/constants/globalSelectionHeader';
 import {DEFAULT_STATS_PERIOD} from 'app/constants';
 import {callIfFunction} from 'app/utils/callIfFunction';
-import {defined} from 'app/utils';
 import {isEqualWithDates} from 'app/utils/isEqualWithDates';
 import {t} from 'app/locale';
 import {
@@ -21,6 +17,7 @@ import {
   updateProjects,
 } from 'app/actionCreators/globalSelection';
 import BackToIssues from 'app/components/organizations/backToIssues';
+import ConfigStore from 'app/stores/configStore';
 import Header from 'app/components/organizations/header';
 import HeaderItemPosition from 'app/components/organizations/headerItemPosition';
 import HeaderSeparator from 'app/components/organizations/headerSeparator';
@@ -30,10 +27,15 @@ import MultipleProjectSelector from 'app/components/organizations/multipleProjec
 import SentryTypes from 'app/sentryTypes';
 import TimeRangeSelector from 'app/components/organizations/timeRangeSelector';
 import Tooltip from 'app/components/tooltip';
+import space from 'app/styles/space';
 import withGlobalSelection from 'app/utils/withGlobalSelection';
-import ConfigStore from 'app/stores/configStore';
 import withProjects from 'app/utils/withProjects';
+
 import {getStateFromQuery} from './utils';
+
+function getProjectIdFromProject(project) {
+  return parseInt(project.id, 10);
+}
 
 class GlobalSelectionHeader extends React.Component {
   static propTypes = {
@@ -43,7 +45,16 @@ class GlobalSelectionHeader extends React.Component {
     /**
      * List of projects to display in project selector
      */
-    projects: PropTypes.arrayOf(SentryTypes.Project),
+    projects: PropTypes.arrayOf(SentryTypes.Project).isRequired,
+
+    /**
+     * A project will be forced from parent component (selection is disabled, and if user
+     * does not have multi-project support enabled, it will not try to auto select a project).
+     *
+     * Project will be specified in the prop `forceProject` (since its data is async)
+     */
+    shouldForceProject: PropTypes.bool,
+
     /**
      * If a forced project is passed, selection is disabled
      */
@@ -54,20 +65,40 @@ class GlobalSelectionHeader extends React.Component {
      */
     selection: SentryTypes.GlobalSelection,
 
-    // Display Environment selector?
+    /**
+     * Display Environment selector?
+     */
     showEnvironmentSelector: PropTypes.bool,
 
-    // Display Environment selector?
+    /**
+     * Display Environment selector?
+     */
     showDateSelector: PropTypes.bool,
 
-    // Disable automatic routing
+    /**
+     * Disable automatic routing
+     */
     hasCustomRouting: PropTypes.bool,
 
-    // Reset these URL params when we fire actions
-    // (custom routing only)
+    /**
+     * Reset these URL params when we fire actions
+     * (custom routing only)
+     */
     resetParamsOnChange: PropTypes.arrayOf(PropTypes.string),
 
-    // Props passed to child components //
+    /**
+     * GlobalSelectionStore is not always initialized (e.g. Group Details) before this is rendered
+     *
+     * This component intentionally attempts to sync store --> URL Parameter
+     * only when mounted, except when this prop changes.
+     *
+     * XXX: This comes from GlobalSelectionStore and currently does not reset,
+     * so it happens at most once. Can add a reset as needed.
+     */
+    forceUrlSync: PropTypes.bool,
+
+    /// Props passed to child components ///
+
     /**
      * Show absolute date selectors
      */
@@ -103,11 +134,19 @@ class GlobalSelectionHeader extends React.Component {
       return;
     }
 
+    const {
+      location,
+      params,
+      organization,
+      selection,
+      shouldForceProject,
+      forceProject,
+    } = this.props;
+
     const hasMultipleProjectFeature = this.hasMultipleProjectSelection();
 
-    const stateFromRouter = getStateFromQuery(this.props.location.query);
-    // We should update store if there are any relevant URL parameters when component
-    // is mounted
+    const stateFromRouter = getStateFromQuery(location.query);
+    // We should update store if there are any relevant URL parameters when component is mounted
     if (Object.values(stateFromRouter).some(i => !!i)) {
       if (!stateFromRouter.start && !stateFromRouter.end && !stateFromRouter.period) {
         stateFromRouter.period = DEFAULT_STATS_PERIOD;
@@ -125,32 +164,21 @@ class GlobalSelectionHeader extends React.Component {
       if (hasMultipleProjectFeature) {
         updateProjects(requestedProjects);
       } else {
-        const allowedProjects =
-          requestedProjects.length > 0
-            ? requestedProjects.slice(0, 1)
-            : this.getFirstProject();
-        updateProjects(allowedProjects);
-        updateParams({project: allowedProjects}, this.getRouter());
+        this.enforceSingleProject({requestedProjects, shouldForceProject, forceProject});
       }
-    } else {
-      // Otherwise, we can update URL with values from store
+    } else if (params && params.orgId === organization.slug) {
+      // Otherwise, if organization has NOT changed,
+      // we can update URL with values from store
       //
       // e.g. when switching to a new view that uses this component,
       // update URL parameters to reflect current store
-      const {datetime, environments, projects} = this.props.selection;
+      const {datetime, environments, projects} = selection;
+      const otherParams = {environment: environments, ...datetime};
 
       if (hasMultipleProjectFeature || projects.length === 1) {
-        updateParamsWithoutHistory(
-          {project: projects, environment: environments, ...datetime},
-          this.getRouter()
-        );
+        updateParamsWithoutHistory({project: projects, ...otherParams}, this.getRouter());
       } else {
-        const allowedProjects = this.getFirstProject();
-        updateProjects(allowedProjects);
-        updateParams(
-          {project: allowedProjects, environment: environments, ...datetime},
-          this.getRouter()
-        );
+        this.enforceSingleProject({shouldForceProject, forceProject}, otherParams);
       }
     }
   }
@@ -162,7 +190,7 @@ class GlobalSelectionHeader extends React.Component {
     }
 
     // Update if URL parameters change
-    if (this.didQueryChange(this.props, nextProps)) {
+    if (this.changedQueryKeys(this.props, nextProps).length > 0) {
       return true;
     }
 
@@ -186,7 +214,7 @@ class GlobalSelectionHeader extends React.Component {
       return true;
     }
 
-    //update if any projects are starred or reordered
+    // update if any projects are starred or reordered
     if (
       this.props.projects &&
       nextProps.projects &&
@@ -198,12 +226,56 @@ class GlobalSelectionHeader extends React.Component {
       return true;
     }
 
+    // Update if `forceUrlSync` changes
+    if (!this.props.forceUrlSync && nextProps.forceUrlSync) {
+      return true;
+    }
+
     return false;
   }
 
   componentDidUpdate(prevProps) {
-    if (this.props.hasCustomRouting) {
+    const {
+      hasCustomRouting,
+      location,
+      selection,
+      forceUrlSync,
+      forceProject,
+    } = this.props;
+
+    if (hasCustomRouting) {
       return;
+    }
+
+    // This means that previously forceProject was falsey (e.g. loading) and now
+    // we have the project to force.
+    //
+    // If user does not have multiple project selection, we need to save the forced
+    // project into the store (if project is not in URL params), otherwise
+    // there will be weird behavior in this component since it just picks a project
+    if (!this.hasMultipleProjectSelection() && forceProject && !prevProps.forceProject) {
+      // Make sure a project isn't specified in query param already, since it should take precendence
+      const {project} = getStateFromQuery(location.query);
+      if (!project) {
+        this.enforceSingleProject({forceProject});
+      }
+    }
+
+    if (forceUrlSync && !prevProps.forceUrlSync) {
+      const {project, environment} = getStateFromQuery(location.query);
+
+      if (
+        !isEqual(project, selection.projects) ||
+        !isEqual(environment, selection.environments)
+      ) {
+        updateParamsWithoutHistory(
+          {
+            project: selection.projects,
+            environment: selection.environments,
+          },
+          this.getRouter()
+        );
+      }
     }
 
     // If component has updated (e.g. due to re-render from a router action),
@@ -215,17 +287,58 @@ class GlobalSelectionHeader extends React.Component {
     return new Set(this.props.organization.features).has('global-views');
   };
 
-  didQueryChange = (prevProps, nextProps) => {
+  /**
+   * If user does not have access to `global-views` (e.g. multi project select), then
+   * we update URL params with 1) `props.forceProject`, 2) requested projects from URL params,
+   * 3) first project user is a member of from org
+   */
+  enforceSingleProject = (
+    {requestedProjects, shouldForceProject, forceProject} = {},
+    otherParams
+  ) => {
+    let newProject;
+
+    // This is the case where we *want* to force project, but we are still loading
+    // the forced project's details
+    if (shouldForceProject && !forceProject) {
+      return;
+    }
+
+    if (forceProject) {
+      // this takes precendence over the other options
+      newProject = [getProjectIdFromProject(forceProject)];
+    } else if (requestedProjects && requestedProjects.length > 0) {
+      // If there is a list of projects from URL params, select first project from that list
+      newProject = [requestedProjects[0]];
+    } else {
+      // Otherwise, get first project from org that the user is a member of
+      newProject = this.getFirstProject();
+    }
+
+    updateProjects(newProject);
+    updateParamsWithoutHistory({project: newProject, ...otherParams}, this.getRouter());
+  };
+
+  /**
+   * Identifies the query params (that are relevant to this component) that have changed
+   *
+   * @return {String[]} Returns an array of param keys that have changed
+   */
+  changedQueryKeys = (prevProps, nextProps) => {
     const urlParamKeys = Object.values(URL_PARAM);
     const prevQuery = pick(prevProps.location.query, urlParamKeys);
     const nextQuery = pick(nextProps.location.query, urlParamKeys);
 
     // If no next query is specified keep the previous global selection values
-    if (Object.keys(nextQuery).length === 0) {
-      return false;
+    if (Object.keys(prevQuery).length === 0 && Object.keys(nextQuery).length === 0) {
+      return [];
     }
 
-    return !isEqual(prevQuery, nextQuery);
+    const changedKeys = Object.values(urlParamKeys).filter(
+      key => !isEqual(prevQuery[key], nextQuery[key])
+    );
+
+    return changedKeys;
   };
 
   updateStoreIfChange = (prevProps, nextProps) => {
@@ -233,7 +346,9 @@ class GlobalSelectionHeader extends React.Component {
     //
     // e.g. if selection store changed, don't trigger more actions
     // to update global selection store (otherwise we'll get recursive updates)
-    if (!this.didQueryChange(prevProps, nextProps)) {
+    const changedKeys = this.changedQueryKeys(prevProps, nextProps);
+
+    if (!changedKeys.length) {
       return;
     }
 
@@ -241,13 +356,19 @@ class GlobalSelectionHeader extends React.Component {
       nextProps.location.query
     );
 
-    if (start || end || period || utc) {
-      // Don't attempt to update date if all of these values are empty
+    if (changedKeys.includes(URL_PARAM.PROJECT)) {
+      updateProjects(project || []);
+    }
+    if (changedKeys.includes(URL_PARAM.ENVIRONMENT)) {
+      updateEnvironments(environment || []);
+    }
+    if (
+      [URL_PARAM.START, URL_PARAM.END, URL_PARAM.UTC, URL_PARAM.PERIOD].find(key =>
+        changedKeys.includes(key)
+      )
+    ) {
       updateDateTime({start, end, period, utc});
     }
-
-    updateEnvironments(environment || []);
-    updateProjects(project || []);
   };
 
   // Returns `router` from props if `hasCustomRouting` property is false
@@ -281,7 +402,9 @@ class GlobalSelectionHeader extends React.Component {
 
   handleUpdateTime = ({relative: period, start, end, utc} = {}) => {
     const newValueObj = {
-      ...(defined(period) ? {period} : {start, end}),
+      period,
+      start,
+      end,
       utc,
     };
 
@@ -298,26 +421,46 @@ class GlobalSelectionHeader extends React.Component {
 
   handleUpdateProjects = () => {
     const {projects} = this.state;
-    updateProjects(projects, this.getRouter(), this.getUpdateOptions());
-    this.setState({projects: null});
+
+    // Clear environments when switching projects
+    //
+    // Update both params at once, otherwise:
+    // - if you update projects first, we could get a flicker
+    //   because you'll have projects & environments before we update
+    // - if you update environments first, there could be race conditions
+    //   with value of router.location.query
+    updateParams(
+      {
+        environment: null,
+        project: projects,
+      },
+      this.getRouter(),
+      this.getUpdateOptions()
+    );
+    this.setState({projects: null, environments: null});
     callIfFunction(this.props.onUpdateProjects, projects);
   };
 
   getProjects = () => {
+    const {organization, projects} = this.props;
     const {isSuperuser} = ConfigStore.get('user');
-    const {projects, organization} = this.props;
-    const unfilteredProjects = projects || organization.projects;
+    const isOrgAdmin = new Set(organization.access).has('org:admin');
 
-    if (isSuperuser) {
-      return unfilteredProjects;
+    const [memberProjects, nonMemberProjects] = partition(
+      projects,
+      project => project.isMember
+    );
+
+    if (isSuperuser || isOrgAdmin) {
+      return [memberProjects, nonMemberProjects];
     }
 
-    return unfilteredProjects.filter(project => project.isMember);
+    return [memberProjects, []];
   };
 
   getFirstProject = () => {
-    return this.getProjects()
-      .map(p => parseInt(p.id, 10))
+    return flatten(this.getProjects())
+      .map(getProjectIdFromProject)
       .slice(0, 1);
   };
 
@@ -325,10 +468,7 @@ class GlobalSelectionHeader extends React.Component {
     const {organization, location} = this.props;
     return (
       <BackButtonWrapper>
-        <Tooltip
-          title={t('Back to Issues Stream')}
-          tooltipOptions={{placement: 'bottom'}}
-        >
+        <Tooltip title={t('Back to Issues Stream')} position="bottom">
           <BackToIssues
             to={`/organizations/${organization.slug}/issues/${location.search}`}
           >
@@ -342,6 +482,7 @@ class GlobalSelectionHeader extends React.Component {
   render() {
     const {
       className,
+      shouldForceProject,
       forceProject,
       organization,
       showAbsolute,
@@ -355,14 +496,18 @@ class GlobalSelectionHeader extends React.Component {
       ? [parseInt(forceProject.id, 10)]
       : this.props.selection.projects;
 
+    const [projects, nonMemberProjects] = this.getProjects();
+
     return (
       <Header className={className}>
         <HeaderItemPosition>
-          {forceProject && this.getBackButton()}
+          {shouldForceProject && this.getBackButton()}
           <MultipleProjectSelector
             organization={organization}
+            shouldForceProject={shouldForceProject}
             forceProject={forceProject}
-            projects={this.getProjects()}
+            projects={projects}
+            nonMemberProjects={nonMemberProjects}
             value={this.state.projects || this.props.selection.projects}
             onChange={this.handleChangeProjects}
             onUpdate={this.handleUpdateProjects}
@@ -415,4 +560,6 @@ const BackButtonWrapper = styled('div')`
   display: flex;
   align-items: center;
   height: 100%;
+  position: relative;
+  left: ${space(2)};
 `;

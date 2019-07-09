@@ -130,14 +130,17 @@ export default class InstalledIntegration extends React.Component {
               {integration.status === 'active' && (
                 <Tooltip
                   disabled={this.hasConfiguration()}
-                  tooltipOptions={{placement: 'left'}}
+                  position="left"
                   title="Integration not configurable"
                 >
                   <StyledButton
                     borderless
                     icon="icon-settings"
                     disabled={!this.hasConfiguration() || !hasAccess}
-                    to={`/settings/${orgId}/integrations/${provider.key}/${integration.id}/`}
+                    to={`/settings/${orgId}/integrations/${provider.key}/${
+                      integration.id
+                    }/`}
+                    data-test-id="integration-configure-button"
                   >
                     Configure
                   </StyledButton>
@@ -146,8 +149,13 @@ export default class InstalledIntegration extends React.Component {
             </Box>
             <Box>
               <Confirm priority="danger" disabled={!hasAccess} {...removeConfirmProps}>
-                <StyledButton disabled={!hasAccess} borderless icon="icon-trash">
-                  Remove
+                <StyledButton
+                  disabled={!hasAccess}
+                  borderless
+                  icon="icon-trash"
+                  data-test-id="integration-remove-button"
+                >
+                  Uninstall
                 </StyledButton>
               </Confirm>
             </Box>

@@ -21,7 +21,9 @@ class SettingsWrapper extends React.Component {
     this.state = {
       lastAppContext: !!props.project
         ? 'project'
-        : !!props.organization ? 'organization' : null,
+        : !!props.organization
+        ? 'organization'
+        : null,
     };
   }
 
@@ -42,10 +44,9 @@ class SettingsWrapper extends React.Component {
 
 export default withLatestContext(SettingsWrapper);
 
-const StyledSettingsWrapper = styled.div`
+const StyledSettingsWrapper = styled('div')`
   display: flex;
   flex: 1;
-  font-family: 'Rubik', sans-serif;
   font-size: 16px;
   color: ${p => p.theme.gray5};
   margin-bottom: -20px; /* to account for footer margin top */
@@ -53,8 +54,5 @@ const StyledSettingsWrapper = styled.div`
 
   .messages-container {
     margin: 0;
-  }
-  .sentry-error-embed-wrapper {
-    z-index: ${p => p.theme.zIndex.sentryErrorEmbed};
   }
 `;

@@ -69,7 +69,7 @@ class DropdownMenu extends React.Component {
 
   // Checks if click happens inside of dropdown menu (or its button)
   // Closes dropdownmenu if it is "outside"
-  checkClickOutside = e => {
+  checkClickOutside = async e => {
     const {onClickOutside, shouldIgnoreClickOutside} = this.props;
 
     if (!this.dropdownMenu) {
@@ -101,7 +101,13 @@ class DropdownMenu extends React.Component {
       onClickOutside(e);
     }
 
-    this.handleClose(e);
+    // Wait until the current macrotask completes, in the case that the click
+    // happened on a hovercard or some other element rendered outside of the
+    // dropdown, but controlled by the existance of the dropdown, we need to
+    // ensure any click handlers are run.
+    await new Promise(resolve => setTimeout(resolve));
+
+    this.handleClose();
   };
 
   // Callback function from <DropdownMenu> to see if we should close menu
@@ -240,9 +246,15 @@ class DropdownMenu extends React.Component {
   getRootProps = props => props;
 
   // Actor is the component that will open the dropdown menu
-  getActorProps = (
-    {onClick, onMouseEnter, onMouseLeave, onKeyDown, isStyled, style, ...props} = {}
-  ) => {
+  getActorProps = ({
+    onClick,
+    onMouseEnter,
+    onMouseLeave,
+    onKeyDown,
+    isStyled,
+    style,
+    ...props
+  } = {}) => {
     const {isNestedDropdown, closeOnEscape} = this.props;
 
     // Props that the actor needs to have <DropdownMenu> work
@@ -357,6 +369,10 @@ class DropdownMenu extends React.Component {
       getRootProps: this.getRootProps,
       getActorProps: this.getActorProps,
       getMenuProps: this.getMenuProps,
+      actions: {
+        open: this.handleOpen,
+        close: this.handleClose,
+      },
     });
   }
 }

@@ -18,29 +18,28 @@ import Button from 'app/components/button';
 import Confirm from 'app/components/confirm';
 import Duration from 'app/components/duration';
 import EmptyStateWarning from 'app/components/emptyStateWarning';
-import EnvironmentStore from 'app/stores/environmentStore';
-import ListLink from 'app/components/listLink';
-import NavTabs from 'app/components/navTabs';
 import PermissionAlert from 'app/views/settings/project/permissionAlert';
 import SentryTypes from 'app/sentryTypes';
-import SettingsPageHeader from 'app/views/settings/components/settingsPageHeader';
 import Tooltip from 'app/components/tooltip';
 import recreateRoute from 'app/utils/recreateRoute';
 import withApi from 'app/utils/withApi';
+import {getDisplayName} from 'app/utils/environment';
+
+import ProjectAlertHeader from './projectAlertHeader';
 
 const TextColorLink = styled(Link)`
   color: ${p => p.theme.gray3};
 `;
 
-const RuleDescriptionRow = styled.div`
+const RuleDescriptionRow = styled('div')`
   display: flex;
 `;
-const RuleDescriptionColumn = styled.div`
+const RuleDescriptionColumn = styled('div')`
   flex: 1;
   padding: ${p => p.theme.grid * 2}px;
   height: 100%;
 `;
-const Condition = styled.div`
+const Condition = styled('div')`
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -93,9 +92,9 @@ const RuleRow = withApi(
       const {data, canEdit} = this.props;
       const editLink = recreateRoute(`${data.id}/`, this.props);
 
-      const env = EnvironmentStore.getByName(data.environment);
-
-      const environmentName = env ? env.displayName : t('All Environments');
+      const environmentName = data.environment
+        ? getDisplayName({name: data.environment})
+        : t('All Environments');
 
       return (
         <Panel>
@@ -258,38 +257,11 @@ class ProjectAlertRules extends AsyncView {
 
   renderBody() {
     const {ruleList} = this.state;
-    const {organization} = this.context;
-    const canEditRule = organization.access.includes('project:write');
+    const {projectId} = this.props.params;
 
     return (
       <React.Fragment>
-        <SettingsPageHeader
-          title={t('Alerts')}
-          action={
-            <Tooltip
-              disabled={canEditRule}
-              title={t('You do not have permission to edit alert rules.')}
-            >
-              <Button
-                disabled={!canEditRule}
-                to={recreateRoute('new/', this.props)}
-                priority="primary"
-                size="small"
-                icon="icon-circle-add"
-              >
-                {t('New Alert Rule')}
-              </Button>
-            </Tooltip>
-          }
-          tabs={
-            <NavTabs underlined={true}>
-              <ListLink to={recreateRoute('alerts', {...this.props, stepBack: -4})}>
-                {t('Settings')}
-              </ListLink>
-              <ListLink to={recreateRoute('', this.props)}>{t('Rules')}</ListLink>
-            </NavTabs>
-          }
-        />
+        <ProjectAlertHeader projectId={projectId} />
         <PermissionAlert />
         {!!ruleList.length && this.renderResults()}
         {!ruleList.length && this.renderEmpty()}
