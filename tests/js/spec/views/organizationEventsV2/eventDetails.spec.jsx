@@ -12,15 +12,23 @@ describe('OrganizationEventsV2 > EventDetails', function() {
 
   beforeEach(function() {
     MockApiClient.addMockResponse({
-      url: '/organizations/org-slug/events/',
-      body: [
-        {
-          id: 'deadbeef',
-          title: 'Oh no something bad',
-          'project.name': 'project-slug',
-          timestamp: '2019-05-23T22:12:48+00:00',
+      url: '/organizations/org-slug/eventsv2/',
+      body: {
+        meta: {
+          id: 'string',
+          title: 'string',
+          'project.name': 'string',
+          timestamp: 'date',
         },
-      ],
+        data: [
+          {
+            id: 'deadbeef',
+            title: 'Oh no something bad',
+            'project.name': 'project-slug',
+            timestamp: '2019-05-23T22:12:48+00:00',
+          },
+        ],
+      },
     });
     MockApiClient.addMockResponse({
       url: '/organizations/org-slug/events/project-slug:deadbeef/',
@@ -28,10 +36,11 @@ describe('OrganizationEventsV2 > EventDetails', function() {
       body: {
         id: '1234',
         size: 1200,
-        projectSlug: 'org-slug',
+        projectSlug: 'project-slug',
         eventID: 'deadbeef',
         groupID: '123',
         title: 'Oh no something bad',
+        location: '/users/login',
         message: 'It was not good',
         dateCreated: '2019-05-23T22:12:48+00:00',
         entries: [
@@ -57,28 +66,85 @@ describe('OrganizationEventsV2 > EventDetails', function() {
       },
     });
 
+    // Missing event
     MockApiClient.addMockResponse({
-      url: '/organizations/org-slug/events/latest/',
+      url: '/organizations/org-slug/events/project-slug:abad1/',
       method: 'GET',
-      body: {
-        id: '1234',
-        size: 1200,
-        projectSlug: 'org-slug',
-        eventID: 'deadbeef',
-        groupID: '123',
-        title: 'Oh no something bad',
-        message: 'It was not good',
-        dateCreated: '2019-05-23T22:12:48+00:00',
-        entries: [
-          {
-            type: 'message',
-            message: 'bad stuff',
-            data: {},
-          },
-        ],
-        tags: [{key: 'browser', value: 'Firefox'}],
-      },
+      statusCode: 404,
+      body: {},
     });
+
+    // Error event
+    MockApiClient.addMockResponse(
+      {
+        url: '/organizations/org-slug/events/latest/',
+        method: 'GET',
+        body: {
+          id: '5678',
+          size: 1200,
+          projectSlug: 'project-slug',
+          eventID: 'deadbeef',
+          groupID: '123',
+          type: 'error',
+          title: 'Oh no something bad',
+          message: 'It was not good',
+          dateCreated: '2019-05-23T22:12:48+00:00',
+          previousEventID: 'beefbeef',
+          metadata: {
+            type: 'Oh no something bad',
+          },
+          entries: [
+            {
+              type: 'message',
+              message: 'bad stuff',
+              data: {},
+            },
+          ],
+          tags: [{key: 'browser', value: 'Firefox'}],
+        },
+      },
+      {
+        predicate: (_, options) => {
+          const query = options.query.query;
+          return (
+            query && (query.includes('event.type:error') || query.includes('issue.id'))
+          );
+        },
+      }
+    );
+
+    // Transaction event
+    MockApiClient.addMockResponse(
+      {
+        url: '/organizations/org-slug/events/latest/',
+        method: 'GET',
+        body: {
+          id: '5678',
+          size: 1200,
+          projectSlug: 'project-slug',
+          eventID: 'deadbeef',
+          type: 'transaction',
+          title: 'Oh no something bad',
+          location: '/users/login',
+          message: 'It was not good',
+          startTimestamp: 1564153693.2419,
+          endTimestamp: 1564153694.4191,
+          previousEventID: 'beefbeef',
+          entries: [
+            {
+              type: 'spans',
+              data: [],
+            },
+          ],
+          tags: [{key: 'browser', value: 'Firefox'}],
+        },
+      },
+      {
+        predicate: (_, options) => {
+          return options.query.query && options.query.query.includes('transaction');
+        },
+      }
+    );
   });
 
   it('renders', function() {
@@ -98,12 +164,26 @@ describe('OrganizationEventsV2 > EventDetails', function() {
     expect(graph).toHaveLength(0);
   });
 
+  it('renders a 404', function() {
+    const wrapper = mount(
+      <EventDetails
+        organization={TestStubs.Organization({projects: [TestStubs.Project()]})}
+        eventSlug="project-slug:abad1"
+        location={{query: {eventSlug: 'project-slug:abad1'}}}
+        view={allEventsView}
+      />,
+      TestStubs.routerContext()
+    );
+    const content = wrapper.find('NotFound');
+    expect(content).toHaveLength(1);
+  });
+
   it('renders a chart in grouped view', function() {
     const wrapper = mount(
       <EventDetails
         organization={TestStubs.Organization({projects: [TestStubs.Project()]})}
-        groupSlug="project-slug:123:latest"
-        location={{query: {groupSlug: 'project-slug:123:latest'}}}
+        eventSlug="project-slug:deadbeef"
+        location={{query: {eventSlug: 'project-slug:deadbeef'}}}
         view={errorsView}
       />,
       TestStubs.routerContext()
@@ -115,20 +195,6 @@ describe('OrganizationEventsV2 > EventDetails', function() {
     expect(graph).toHaveLength(1);
   });
 
-  it('renders pagination buttons in grouped view', function() {
-    const wrapper = mount(
-      <EventDetails
-        organization={TestStubs.Organization({projects: [TestStubs.Project()]})}
-        groupSlug="project-slug:123:latest"
-        location={{query: {groupSlug: 'project-slug:999:latest'}}}
-        view={errorsView}
-      />,
-      TestStubs.routerContext()
-    );
-    const content = wrapper.find('ModalPagination');
-    expect(content).toHaveLength(1);
-  });
-
   it('removes eventSlug when close button is clicked', function() {
     const wrapper = mount(
       <EventDetails
@@ -137,27 +203,6 @@ describe('OrganizationEventsV2 > EventDetails', function() {
         location={{
           pathname: '/organizations/org-slug/events/',
           query: {eventSlug: 'project-slug:deadbeef'},
-        }}
-        view={allEventsView}
-      />,
-      TestStubs.routerContext()
-    );
-    const button = wrapper.find('DismissButton');
-    button.simulate('click');
-    expect(browserHistory.push).toHaveBeenCalledWith({
-      pathname: '/organizations/org-slug/events/',
-      query: {},
-    });
-  });
-
-  it('removes groupSlug when close button is clicked', function() {
-    const wrapper = mount(
-      <EventDetails
-        organization={TestStubs.Organization({projects: [TestStubs.Project()]})}
-        groupSlug="project-slug:123:latest"
-        location={{
-          pathname: '/organizations/org-slug/events/',
-          query: {groupSlug: 'project-slug:123:latest'},
         }}
         view={allEventsView}
       />,

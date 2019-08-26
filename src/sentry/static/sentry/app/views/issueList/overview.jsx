@@ -23,7 +23,6 @@ import {fetchOrgMembers, indexMembersByProject} from 'app/actionCreators/members
 import {fetchOrganizationTags, fetchTagValues} from 'app/actionCreators/tags';
 import {getUtcDateString} from 'app/utils/dates';
 import {t} from 'app/locale';
-import ConfigStore from 'app/stores/configStore';
 import CursorPoller from 'app/utils/cursorPoller';
 import EmptyStateWarning from 'app/components/emptyStateWarning';
 import ErrorRobot from 'app/components/errorRobot';
@@ -54,6 +53,10 @@ const DEFAULT_SORT = 'date';
 const DEFAULT_GRAPH_STATS_PERIOD = '24h';
 // the allowed period choices for graph in each issue row
 const STATS_PERIODS = new Set(['14d', '24h']);
+
+const CongratsRobots = React.lazy(() =>
+  import(/* webpackChunkName: "CongratsRobots" */ 'app/views/issueList/congratsRobots')
+);
 
 const IssueList = createReactClass({
   displayName: 'IssueList',
@@ -526,19 +529,12 @@ const IssueList = createReactClass({
   },
 
   renderGroupNodes(ids, groupStatsPeriod) {
-    // Restrict this guide to only show for new users (joined < 30 days)
-    // and add guide anchor only to the first issue
-    const userDateJoined = new Date(ConfigStore.get('user').dateJoined);
-    const dateCutoff = new Date();
-    dateCutoff.setDate(dateCutoff.getDate() - 30);
-
     const topIssue = ids[0];
     const {memberList} = this.state;
 
     const {orgId} = this.props.params;
     const groupNodes = ids.map(id => {
-      const hasGuideAnchor = userDateJoined > dateCutoff && id === topIssue;
-
+      const hasGuideAnchor = id === topIssue;
       const group = GroupStore.get(id);
       let members = null;
       if (group && group.project) {
@@ -572,10 +568,19 @@ const IssueList = createReactClass({
     return <LoadingIndicator />;
   },
 
+  renderNoUnresolvedIssues() {
+    return (
+      <React.Suspense fallback={this.renderLoading()}>
+        <CongratsRobots data-test-id="congrats-robots" />
+      </React.Suspense>
+    );
+  },
+
   renderStreamBody() {
     let body;
     const {organization} = this.props;
     const selectedProjects = this.getGlobalSearchProjects();
+    const query = this.getQuery();
 
     // If no projects are selected, then we must check every project the user is a
     // member of and make sure there are no first events for all of the projects
@@ -592,6 +597,8 @@ const IssueList = createReactClass({
       body = this.renderGroupNodes(this.state.groupIds, this.getGroupStatsPeriod());
     } else if (noFirstEvents) {
       body = this.renderAwaitingEvents(projects);
+    } else if (query === DEFAULT_QUERY) {
+      body = this.renderNoUnresolvedIssues();
     } else {
       body = this.renderEmpty();
     }

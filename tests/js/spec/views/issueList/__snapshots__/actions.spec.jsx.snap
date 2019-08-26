@@ -144,6 +144,7 @@ exports[`IssueListActions Bulk Total results < bulk limit bulk resolves 1`] = `
           className="modal-footer"
         >
           <Button
+            align="center"
             disabled={false}
             onClick={[Function]}
             style={
@@ -167,7 +168,7 @@ exports[`IssueListActions Bulk Total results < bulk limit bulk resolves 1`] = `
               <ForwardRef
                 aria-disabled={false}
                 aria-label="Cancel"
-                className="css-1i9cddn-StyledButton-getColors e12ma6z0"
+                className="css-4gvaqq-StyledButton-getColors edwq9my0"
                 disabled={false}
                 onClick={[Function]}
                 role="button"
@@ -180,7 +181,7 @@ exports[`IssueListActions Bulk Total results < bulk limit bulk resolves 1`] = `
                 <button
                   aria-disabled={false}
                   aria-label="Cancel"
-                  className="css-1i9cddn-StyledButton-getColors e12ma6z0"
+                  className="css-4gvaqq-StyledButton-getColors edwq9my0"
                   onClick={[Function]}
                   role="button"
                   style={
@@ -189,12 +190,15 @@ exports[`IssueListActions Bulk Total results < bulk limit bulk resolves 1`] = `
                     }
                   }
                 >
-                  <ButtonLabel>
+                  <ButtonLabel
+                    align="center"
+                  >
                     <Component
-                      className="css-ga4b18-ButtonLabel e12ma6z1"
+                      align="center"
+                      className="css-oo1m2a-ButtonLabel edwq9my1"
                     >
                       <span
-                        className="css-ga4b18-ButtonLabel e12ma6z1"
+                        className="css-oo1m2a-ButtonLabel edwq9my1"
                       >
                         Cancel
                       </span>
@@ -205,6 +209,7 @@ exports[`IssueListActions Bulk Total results < bulk limit bulk resolves 1`] = `
             </StyledButton>
           </Button>
           <Button
+            align="center"
             autoFocus={true}
             data-test-id="confirm-modal"
             disabled={false}
@@ -225,7 +230,7 @@ exports[`IssueListActions Bulk Total results < bulk limit bulk resolves 1`] = `
                 aria-disabled={false}
                 aria-label="Bulk resolve issues"
                 autoFocus={true}
-                className="css-1qchtmp-StyledButton-getColors e12ma6z0"
+                className="css-xiynrq-StyledButton-getColors edwq9my0"
                 data-test-id="confirm-modal"
                 disabled={false}
                 onClick={[Function]}
@@ -236,20 +241,22 @@ exports[`IssueListActions Bulk Total results < bulk limit bulk resolves 1`] = `
                   aria-disabled={false}
                   aria-label="Bulk resolve issues"
                   autoFocus={true}
-                  className="css-1qchtmp-StyledButton-getColors e12ma6z0"
+                  className="css-xiynrq-StyledButton-getColors edwq9my0"
                   data-test-id="confirm-modal"
                   onClick={[Function]}
                   role="button"
                 >
                   <ButtonLabel
+                    align="center"
                     priority="primary"
                   >
                     <Component
-                      className="css-ga4b18-ButtonLabel e12ma6z1"
+                      align="center"
+                      className="css-oo1m2a-ButtonLabel edwq9my1"
                       priority="primary"
                     >
                       <span
-                        className="css-ga4b18-ButtonLabel e12ma6z1"
+                        className="css-oo1m2a-ButtonLabel edwq9my1"
                       >
                         Bulk resolve issues
                       </span>
@@ -442,6 +449,7 @@ exports[`IssueListActions Bulk Total results > bulk limit bulk resolves 1`] = `
           className="modal-footer"
         >
           <Button
+            align="center"
             disabled={false}
             onClick={[Function]}
             style={
@@ -465,7 +473,7 @@ exports[`IssueListActions Bulk Total results > bulk limit bulk resolves 1`] = `
               <ForwardRef
                 aria-disabled={false}
                 aria-label="Cancel"
-                className="css-1i9cddn-StyledButton-getColors e12ma6z0"
+                className="css-4gvaqq-StyledButton-getColors edwq9my0"
                 disabled={false}
                 onClick={[Function]}
                 role="button"
@@ -478,7 +486,7 @@ exports[`IssueListActions Bulk Total results > bulk limit bulk resolves 1`] = `
                 <button
                   aria-disabled={false}
                   aria-label="Cancel"
-                  className="css-1i9cddn-StyledButton-getColors e12ma6z0"
+                  className="css-4gvaqq-StyledButton-getColors edwq9my0"
                   onClick={[Function]}
                   role="button"
                   style={
@@ -487,12 +495,15 @@ exports[`IssueListActions Bulk Total results > bulk limit bulk resolves 1`] = `
                     }
                   }
                 >
-                  <ButtonLabel>
+                  <ButtonLabel
+                    align="center"
+                  >
                     <Component
-                      className="css-ga4b18-ButtonLabel e12ma6z1"
+                      align="center"
+                      className="css-oo1m2a-ButtonLabel edwq9my1"
                     >
                       <span
-                        className="css-ga4b18-ButtonLabel e12ma6z1"
+                        className="css-oo1m2a-ButtonLabel edwq9my1"
                       >
                         Cancel
                       </span>
@@ -503,6 +514,7 @@ exports[`IssueListActions Bulk Total results > bulk limit bulk resolves 1`] = `
             </StyledButton>
           </Button>
           <Button
+            align="center"
             autoFocus={true}
             data-test-id="confirm-modal"
             disabled={false}
@@ -523,7 +535,7 @@ exports[`IssueListActions Bulk Total results > bulk limit bulk resolves 1`] = `
                 aria-disabled={false}
                 aria-label="Bulk resolve issues"
                 autoFocus={true}
-                className="css-1qchtmp-StyledButton-getColors e12ma6z0"
+                className="css-xiynrq-StyledButton-getColors edwq9my0"
                 data-test-id="confirm-modal"
                 disabled={false}
                 onClick={[Function]}
@@ -534,20 +546,22 @@ exports[`IssueListActions Bulk Total results > bulk limit bulk resolves 1`] = `
                   aria-disabled={false}
                   aria-label="Bulk resolve issues"
                   autoFocus={true}
-                  className="css-1qchtmp-StyledButton-getColors e12ma6z0"
+                  className="css-xiynrq-StyledButton-getColors edwq9my0"
                   data-test-id="confirm-modal"
                   onClick={[Function]}
                   role="button"
                 >
                   <ButtonLabel
+                    align="center"
                     priority="primary"
                   >
                     <Component
-                      className="css-ga4b18-ButtonLabel e12ma6z1"
+                      align="center"
+                      className="css-oo1m2a-ButtonLabel edwq9my1"
                       priority="primary"
                     >
                       <span
-                        className="css-ga4b18-ButtonLabel e12ma6z1"
+                        className="css-oo1m2a-ButtonLabel edwq9my1"
                       >
                         Bulk resolve issues
                       </span>

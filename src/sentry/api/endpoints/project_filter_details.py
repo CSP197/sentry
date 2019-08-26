@@ -27,19 +27,22 @@ class ProjectFilterDetailsEndpoint(ProjectEndpoint):
         else:
             raise ResourceDoesNotExist  # could not find filter with the requested id
 
-        serializer = current_filter.spec.serializer_cls(data=request.DATA, partial=True)
+        serializer = current_filter.spec.serializer_cls(data=request.data, partial=True)
 
         if not serializer.is_valid():
             return Response(serializer.errors, status=400)
 
         current_state = message_filters.get_filter_state(filter_id, project)
 
-        new_state = message_filters.set_filter_state(filter_id, project, serializer.object)
+        new_state = message_filters.set_filter_state(filter_id, project, serializer.validated_data)
         audit_log_state = AuditLogEntryEvent.PROJECT_ENABLE
 
-        if filter_id == 'legacy-browsers':
-            if isinstance(current_state, bool) or new_state == 0 or isinstance(
-                    new_state, six.binary_type):
+        if filter_id == "legacy-browsers":
+            if (
+                isinstance(current_state, bool)
+                or new_state == 0
+                or isinstance(new_state, six.binary_type)
+            ):
                 returned_state = new_state
 
                 if isinstance(new_state, six.binary_type):
@@ -56,7 +59,7 @@ class ProjectFilterDetailsEndpoint(ProjectEndpoint):
             elif new_state == current_state:
                 returned_state = new_state
 
-        if filter_id in ('browser-extensions', 'localhost', 'web-crawlers'):
+        if filter_id in ("browser-extensions", "localhost", "web-crawlers"):
             returned_state = filter_id
             removed = current_state - new_state
 

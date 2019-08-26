@@ -25,6 +25,7 @@ import EventTags from 'app/components/events/eventTags';
 import EventUserFeedback from 'app/components/events/userFeedback';
 import ExceptionInterface from 'app/components/events/interfaces/exception';
 import GenericInterface from 'app/components/events/interfaces/generic';
+import Hook from 'app/components/hook';
 import MessageInterface from 'app/components/events/interfaces/message';
 import RequestInterface from 'app/components/events/interfaces/request';
 import SentryTypes from 'app/sentryTypes';
@@ -60,6 +61,7 @@ class EventEntries extends React.Component {
     // TODO(dcramer): ideally isShare would be replaced with simple permission
     // checks
     isShare: PropTypes.bool,
+    showExampleCommit: PropTypes.bool,
   };
 
   static defaultProps = {
@@ -79,8 +81,11 @@ class EventEntries extends React.Component {
     this.recordIssueError(errorTypes, errorMessages);
   }
 
-  shouldComponentUpdate(nextProps, nextState) {
-    return this.props.event.id !== nextProps.event.id;
+  shouldComponentUpdate(nextProps) {
+    return (
+      this.props.event.id !== nextProps.event.id ||
+      this.props.showExampleCommit !== nextProps.showExampleCommit
+    );
   }
 
   recordIssueError(errorTypes, errorMessages) {
@@ -100,7 +105,13 @@ class EventEntries extends React.Component {
   renderEntries() {
     const {event, project, isShare} = this.props;
 
-    return event.entries.map((entry, entryIdx) => {
+    const entries = event && event.entries;
+
+    if (!Array.isArray(entries)) {
+      return null;
+    }
+
+    return entries.map((entry, entryIdx) => {
       try {
         const Component = INTERFACES[entry.type];
         if (!Component) {
@@ -137,7 +148,15 @@ class EventEntries extends React.Component {
   }
 
   render() {
-    const {organization, group, isShare, project, event, orgId} = this.props;
+    const {
+      organization,
+      group,
+      isShare,
+      project,
+      event,
+      orgId,
+      showExampleCommit,
+    } = this.props;
 
     const features = organization ? new Set(organization.features) : new Set();
 
@@ -155,9 +174,16 @@ class EventEntries extends React.Component {
     return (
       <div className="entries">
         {!objectIsEmpty(event.errors) && <EventErrors event={event} />}{' '}
-        {!isShare && !!group.firstRelease && (
-          <EventCause event={event} orgId={orgId} projectId={project.slug} />
-        )}
+        {!isShare &&
+          (showExampleCommit ? (
+            <Hook
+              name="component:event-cause-empty"
+              organization={organization}
+              project={project}
+            />
+          ) : (
+            <EventCause event={event} orgId={orgId} projectId={project.slug} />
+          ))}
         {event.userReport && (
           <StyledEventUserFeedback
             report={event.userReport}

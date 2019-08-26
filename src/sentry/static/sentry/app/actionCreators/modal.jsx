@@ -156,22 +156,22 @@ export function openHelpSearchModal() {
     });
 }
 
-export function openSentryAppPermissionModal(options = {}) {
-  import(/* webpackChunkName: "SentryAppPermissionsModal" */ 'app/components/modals/sentryAppPermissionsModal')
-    .then(mod => mod.default)
-    .then(Modal => {
-      openModal(deps => <Modal {...deps} {...options} />, {
-        modalClassName: 'sentry-app-permissions',
-      });
-    });
-}
-
 export function openSentryAppDetailsModal(options = {}) {
   import(/* webpackChunkName: "SentryAppDetailsModal" */ 'app/components/modals/sentryAppDetailsModal')
     .then(mod => mod.default)
     .then(Modal => {
       openModal(deps => <Modal {...deps} {...options} />, {
         modalClassName: 'sentry-app-details',
+      });
+    });
+}
+
+export function openDebugFileSourceModal(options = {}) {
+  import(/* webpackChunkName: "DebugFileSourceModal" */ 'app/components/modals/debugFileSourceModal')
+    .then(mod => mod.default)
+    .then(Modal => {
+      openModal(deps => <Modal {...deps} {...options} />, {
+        modalClassName: 'debug-file-source',
       });
     });
 }
