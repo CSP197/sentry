@@ -1,9 +1,10 @@
-import {observable} from 'mobx';
 import React from 'react';
 
 import {Client} from 'app/api';
 import {mount} from 'enzyme';
 import SentryApplicationDetails from 'app/views/settings/organizationDeveloperSettings/sentryApplicationDetails';
+import JsonForm from 'app/views/settings/components/forms/jsonForm';
+import PermissionsObserver from 'app/views/settings/organizationDeveloperSettings/permissionsObserver';
 import {selectByValue} from '../../../../helpers/select';
 
 describe('Sentry Application Details', function() {
@@ -17,6 +18,7 @@ describe('Sentry Application Details', function() {
 
   const verifyInstallToggle = 'Switch[name="verifyInstall"]';
   const redirectUrlInput = 'Input[name="redirectUrl"]';
+  const maskedValue = '*'.repeat(64);
 
   beforeEach(() => {
     Client.clearMockResponses();
@@ -89,11 +91,17 @@ describe('Sentry Application Details', function() {
         organization: org.slug,
         redirectUrl: 'https://webhook.com/setup',
         webhookUrl: 'https://webhook.com',
-        scopes: observable(['member:read', 'member:admin', 'event:read', 'event:admin']),
-        events: observable(['issue']),
+        scopes: expect.arrayContaining([
+          'member:read',
+          'member:admin',
+          'event:read',
+          'event:admin',
+        ]),
+        events: ['issue'],
         isInternal: false,
         verifyInstall: true,
         isAlertable: true,
+        allowedOrigins: [],
         schema: {},
       };
 
@@ -204,10 +212,50 @@ describe('Sentry Application Details', function() {
     });
   });
 
+  describe('Renders masked values', () => {
+    beforeEach(() => {
+      sentryApp = TestStubs.SentryApp({
+        status: 'internal',
+        clientSecret: maskedValue,
+      });
+      token = TestStubs.SentryAppToken({token: maskedValue, refreshToken: maskedValue});
+      sentryApp.events = ['issue'];
+
+      Client.addMockResponse({
+        url: `/sentry-apps/${sentryApp.slug}/`,
+        body: sentryApp,
+      });
+
+      Client.addMockResponse({
+        url: `/sentry-apps/${sentryApp.slug}/api-tokens/`,
+        body: [token],
+      });
+
+      wrapper = mount(
+        <SentryApplicationDetails params={{appSlug: sentryApp.slug, orgId}} />,
+        TestStubs.routerContext()
+      );
+    });
+
+    it('shows masked tokens', function() {
+      expect(
+        wrapper
+          .find('TextCopyInput input')
+          .first()
+          .prop('value')
+      ).toBe(maskedValue);
+    });
+
+    it('shows masked clientSecret', function() {
+      expect(wrapper.find('#clientSecret input').prop('value')).toBe(maskedValue);
+    });
+  });
+
   describe('Editing internal app tokens', () => {
     beforeEach(() => {
       sentryApp = TestStubs.SentryApp({
         status: 'internal',
+        isAlertable: true,
       });
       token = TestStubs.SentryAppToken();
       sentryApp.events = ['issue'];
@@ -258,6 +306,17 @@ describe('Sentry Application Details', function() {
 
       expect(wrapper.find('EmptyMessage').exists()).toBe(true);
     });
+
+    it('removing webhookURL unsets isAlertable and changes webhookDisabled to true', async () => {
+      expect(wrapper.find(PermissionsObserver).prop('webhookDisabled')).toBe(false);
+      expect(wrapper.find('Switch[name="isAlertable"]').prop('isActive')).toBe(true);
+      wrapper.find('Input[name="webhookUrl"]').simulate('change', {target: {value: ''}});
+      expect(wrapper.find('Switch[name="isAlertable"]').prop('isActive')).toBe(false);
+      expect(wrapper.find(PermissionsObserver).prop('webhookDisabled')).toBe(true);
+      expect(wrapper.find(JsonForm).prop('additionalFieldProps')).toEqual({
+        webhookDisabled: true,
+      });
+    });
   });
 
   describe('Editing an existing public Sentry App', () => {
@@ -306,7 +365,7 @@ describe('Sentry Application Details', function() {
         expect.objectContaining({
           data: expect.objectContaining({
             redirectUrl: 'https://hello.com/',
-            events: observable.array([]),
+            events: [],
           }),
           method: 'PUT',
         })
@@ -329,7 +388,7 @@ describe('Sentry Application Details', function() {
         `/sentry-apps/${sentryApp.slug}/`,
         expect.objectContaining({
           data: expect.objectContaining({
-            events: observable.array([]),
+            events: [],
           }),
           method: 'PUT',
         })

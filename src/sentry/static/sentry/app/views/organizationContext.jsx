@@ -4,6 +4,7 @@ import React from 'react';
 import Reflux from 'reflux';
 import createReactClass from 'create-react-class';
 import styled from 'react-emotion';
+import * as Sentry from '@sentry/browser';
 
 import {fetchOrganizationEnvironments} from 'app/actionCreators/environments';
 import {openSudo} from 'app/actionCreators/modal';
@@ -24,6 +25,8 @@ import Sidebar from 'app/components/sidebar';
 import TeamStore from 'app/stores/teamStore';
 import space from 'app/styles/space';
 import withOrganizations from 'app/utils/withOrganizations';
+import {metric} from 'app/utils/analytics';
+import getRouteStringFromRoutes from 'app/utils/getRouteStringFromRoutes';
 
 const ERROR_TYPES = {
   ORG_NOT_FOUND: 'ORG_NOT_FOUND',
@@ -96,7 +99,7 @@ const OrganizationContext = createReactClass({
     this.setState(this.getInitialState(), this.fetchData);
   },
 
-  onProjectCreation(project) {
+  onProjectCreation() {
     // If a new project was created, we need to re-fetch the
     // org details endpoint, which will propagate re-rendering
     // for the entire component tree
@@ -120,6 +123,7 @@ const OrganizationContext = createReactClass({
       return;
     }
 
+    metric.mark('organization-details-fetch-start');
     const promises = [
       this.props.api.requestPromise(this.getOrganizationDetailsEndpoint()),
       fetchOrganizationEnvironments(this.props.api, this.getOrganizationSlug()),
@@ -135,6 +139,11 @@ const OrganizationContext = createReactClass({
 
         setActiveOrganization(data);
 
+        // Configure scope to have organization tag
+        Sentry.configureScope(scope => {
+          scope.setTag('organization', data.id);
+        });
+
         TeamStore.loadInitialData(data.teams);
         ProjectsStore.loadInitialData(data.projects);
 
@@ -149,14 +158,27 @@ const OrganizationContext = createReactClass({
           GlobalSelectionStore.loadInitialData(data, this.props.location.query);
         }
         OrganizationEnvironmentsStore.loadInitialData(environments);
-
-        this.setState({
-          organization: data,
-          loading: false,
-          error: false,
-          errorType: null,
-          hooks,
-        });
+        this.setState(
+          {
+            organization: data,
+            loading: false,
+            error: false,
+            errorType: null,
+            hooks,
+          },
+          () => {
+            // Take a measurement for when organization details are done loading and the new state is applied
+            metric.measure({
+              name: 'app.component.perf',
+              start: 'organization-details-fetch-start',
+              data: {
+                name: 'org-details',
+                route: getRouteStringFromRoutes(this.props.routes),
+                organization_id: parseInt(data.id, 10),
+              },
+            });
+          }
+        );
       })
       .catch(err => {
         let errorType = null;

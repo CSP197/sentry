@@ -119,6 +119,7 @@ class UpdateSentryAppDetailsTest(SentryAppDetailsTest):
             "clientId": self.published_app.application.client_id,
             "clientSecret": self.published_app.application.client_secret,
             "overview": self.published_app.overview,
+            "allowedOrigins": [],
             "schema": {},
             "owner": {"id": self.org.id, "slug": self.org.slug},
         }
@@ -187,7 +188,8 @@ class UpdateSentryAppDetailsTest(SentryAppDetailsTest):
             },
             format="json",
         )
-        assert response.status_code == 500
+        assert response.status_code == 400
+        assert response.data["detail"] == "Cannot update permissions on a published integration."
 
     def test_cannot_update_non_owned_apps(self):
         self.login_as(user=self.user)
@@ -231,6 +233,29 @@ class UpdateSentryAppDetailsTest(SentryAppDetailsTest):
         )
         assert response.status_code == 200
 
+    def test_remove_scopes(self):
+        self.login_as(user=self.user)
+        app = self.create_sentry_app(
+            name="SampleApp", organization=self.org, scopes=("event:read",)
+        )
+        assert SentryApp.objects.get(id=app.id).get_scopes() == ["event:read"]
+        url = reverse("sentry-api-0-sentry-app-details", args=[app.slug])
+        # scopes is empty array which should not be treated as none
+        response = self.client.put(url, data={"scopes": ()}, format="json")
+        assert response.status_code == 200
+        assert SentryApp.objects.get(id=app.id).get_scopes() == []
+
+    def test_keep_scope_unchanged(self):
+        self.login_as(user=self.user)
+        app = self.create_sentry_app(
+            name="SampleApp", organization=self.org, scopes=("event:read",)
+        )
+        url = reverse("sentry-api-0-sentry-app-details", args=[app.slug])
+        # scopes is None here
+        response = self.client.put(url, data={}, format="json")
+        assert response.status_code == 200
+        assert SentryApp.objects.get(id=app.id).get_scopes() == ["event:read"]
+
     @patch("sentry.analytics.record")
     def test_bad_schema(self, record):
         self.login_as(user=self.user)
@@ -249,6 +274,51 @@ class UpdateSentryAppDetailsTest(SentryAppDetailsTest):
             error_message="'elements' is a required property",
             schema=json.dumps(schema),
         )
+
+    def test_no_webhook_public_integration(self):
+        self.login_as(user=self.user)
+        response = self.client.put(self.url, data={"webhookUrl": ""}, format="json")
+        assert response.status_code == 400
+        assert response.data == {"webhookUrl": ["webhookUrl required for public integrations"]}
+
+    def test_no_webhook_has_events(self):
+        self.login_as(user=self.user)
+        url = reverse("sentry-api-0-sentry-app-details", args=[self.internal_integration.slug])
+        response = self.client.put(
+            url, data={"webhookUrl": "", "events": ("issue",)}, format="json"
+        )
+        assert response.status_code == 400
+        assert response.data == {
+            "webhookUrl": ["webhookUrl required if webhook events are enabled"]
+        }
+
+    def test_no_webhook_has_alerts(self):
+        self.login_as(user=self.user)
+        # make sure we test at least one time with the webhookUrl set to none before the put request
+        self.internal_integration.webhook_url = None
+        self.internal_integration.save()
+        url = reverse("sentry-api-0-sentry-app-details", args=[self.internal_integration.slug])
+        response = self.client.put(url, data={"isAlertable": True}, format="json")
+        assert response.status_code == 400
+        assert response.data == {
+            "webhookUrl": ["webhookUrl required if alert rule action is enabled"]
+        }
+
+    def test_set_allowed_origins(self):
+        self.login_as(user=self.user)
+        response = self.client.put(
+            self.url, data={"allowedOrigins": ["google.com", "sentry.io"]}, format="json"
+        )
+        assert response.status_code == 200
+        assert self.published_app.application.get_allowed_origins() == ["google.com", "sentry.io"]
+
+    def test_allowed_origins_with_star(self):
+        self.login_as(user=self.user)
+        response = self.client.put(
+            self.url, data={"allowedOrigins": ["*.google.com"]}, format="json"
+        )
+        assert response.status_code == 400
+        assert response.data == {"allowedOrigins": ["'*' not allowed in origin"]}
 
 
 class DeleteSentryAppDetailsTest(SentryAppDetailsTest):

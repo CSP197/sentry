@@ -26,7 +26,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.generic.base import View as BaseView
 from functools import wraps
 from querystring_parser import parser
-from symbolic import ProcessMinidumpError, Unreal4Error
+from symbolic import ProcessMinidumpError, Unreal4Crash, Unreal4Error
 
 from sentry import features, options, quotas
 from sentry.attachments import CachedAttachment
@@ -47,11 +47,11 @@ from sentry.event_manager import EventManager
 from sentry.interfaces import schemas
 from sentry.interfaces.base import get_interface
 from sentry.lang.native.unreal import (
-    process_unreal_crash,
-    merge_apple_crash_report,
+    merge_unreal_user,
     unreal_attachment_type,
     merge_unreal_context_event,
     merge_unreal_logs_event,
+    write_applecrashreport_placeholder,
 )
 
 from sentry.lang.native.minidump import (
@@ -120,7 +120,8 @@ def allow_cors_options(func):
         response["Allow"] = allow
         response["Access-Control-Allow-Methods"] = allow
         response["Access-Control-Allow-Headers"] = (
-            "X-Sentry-Auth, X-Requested-With, Origin, Accept, " "Content-Type, Authentication"
+            "X-Sentry-Auth, X-Requested-With, Origin, Accept, "
+            "Content-Type, Authentication, Authorization"
         )
         response["Access-Control-Expose-Headers"] = "X-Sentry-Error, Retry-After"
 
@@ -256,17 +257,19 @@ def process_event(event_manager, project, key, remote_addr, helper, attachments,
         raise APIForbidden("An event with the same ID already exists (%s)" % (event_id,))
 
     config = project_config.config
-    scrub_ip_address = config.get("scrub_ip_addresses")
+    datascrubbing_settings = config.get("datascrubbingSettings") or {}
 
-    scrub_data = config.get("scrub_data")
+    scrub_ip_address = datascrubbing_settings.get("scrubIpAddresses")
+
+    scrub_data = datascrubbing_settings.get("scrubData")
 
     if scrub_data:
         # We filter data immediately before it ever gets into the queue
-        sensitive_fields = config.get("sensitive_fields")
+        sensitive_fields = datascrubbing_settings.get("sensitiveFields")
 
-        exclude_fields = config.get("exclude_fields")
+        exclude_fields = datascrubbing_settings.get("excludeFields")
 
-        scrub_defaults = config.get("scrub_defaults")
+        scrub_defaults = datascrubbing_settings.get("scrubDefaults")
 
         SensitiveDataFilter(
             fields=sensitive_fields, include_defaults=scrub_defaults, exclude_fields=exclude_fields
@@ -880,6 +883,7 @@ class MinidumpView(StoreView):
 # Endpoint used by the Unreal Engine 4 (UE4) Crash Reporter.
 class UnrealView(StoreView):
     content_types = ("application/octet-stream",)
+    required_attachments = ("minidump", "applecrashreport")
 
     def _dispatch(
         self,
@@ -936,19 +940,15 @@ class UnrealView(StoreView):
             "organizations:event-attachments", project.organization, actor=request.user
         )
 
-        is_apple_crash_report = False
-
         attachments = []
-        event = {"event_id": uuid.uuid4().hex}
-        try:
-            unreal = process_unreal_crash(
-                request.body, request.GET.get("UserID"), request.GET.get("AppEnvironment"), event
-            )
+        event = {"event_id": uuid.uuid4().hex, "environment": request.GET.get("AppEnvironment")}
 
-            apple_crash_report = unreal.get_apple_crash_report()
-            if apple_crash_report:
-                merge_apple_crash_report(apple_crash_report, event)
-                is_apple_crash_report = True
+        user_id = request.GET.get("UserID")
+        if user_id:
+            merge_unreal_user(event, user_id)
+
+        try:
+            unreal = Unreal4Crash.from_bytes(request.body)
         except (ProcessMinidumpError, Unreal4Error) as e:
             minidumps_logger.exception(e)
             track_outcome(
@@ -956,27 +956,31 @@ class UnrealView(StoreView):
                 project_config.project_id,
                 None,
                 Outcome.INVALID,
-                "process_minidump_unreal",
+                "process_unreal",
             )
             raise APIError(e.message.split("\n", 1)[0])
 
         try:
             unreal_context = unreal.get_context()
-            if unreal_context is not None:
-                merge_unreal_context_event(unreal_context, event, project)
         except Unreal4Error as e:
             # we'll continue without the context data
+            unreal_context = None
             minidumps_logger.exception(e)
+        else:
+            if unreal_context is not None:
+                merge_unreal_context_event(unreal_context, event, project)
 
         try:
             unreal_logs = unreal.get_logs()
-            if unreal_logs is not None:
-                merge_unreal_logs_event(unreal_logs, event)
         except Unreal4Error as e:
             # we'll continue without the breadcrumbs
             minidumps_logger.exception(e)
+        else:
+            if unreal_logs is not None:
+                merge_unreal_logs_event(unreal_logs, event)
 
         is_minidump = False
+        is_applecrashreport = False
 
         for file in unreal.files():
             # Known attachment: msgpack event
@@ -987,13 +991,14 @@ class UnrealView(StoreView):
                 merge_attached_breadcrumbs(file.open_stream(), event)
                 continue
 
-            if file.type == "minidump" and not is_apple_crash_report:
+            if file.type == "minidump":
                 is_minidump = True
+            if file.type == "applecrashreport":
+                is_applecrashreport = True
 
-            # Always store the minidump in attachments so we can access it during
-            # processing, regardless of the event-attachments feature. This will
-            # allow us to stack walk again with CFI once symbols are loaded.
-            if file.type == "minidump" or attachments_enabled:
+            # Always store attachments that can be processed, regardless of the
+            # event-attachments feature.
+            if file.type in self.required_attachments or attachments_enabled:
                 attachments.append(
                     CachedAttachment(
                         name=file.name,
@@ -1004,6 +1009,8 @@ class UnrealView(StoreView):
 
         if is_minidump:
             write_minidump_placeholder(event)
+        elif is_applecrashreport:
+            write_applecrashreport_placeholder(event)
 
         event_id = self.process(
             request,

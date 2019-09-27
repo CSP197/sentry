@@ -526,17 +526,17 @@ def convert_search_filter_to_snuba_query(search_filter):
 
     if snuba_name in no_conversion:
         return
-    elif snuba_name == "tags[environment]":
+    elif snuba_name == "environment":
         env_conditions = []
         _envs = set(value if isinstance(value, (list, tuple)) else [value])
         # the "no environment" environment is null in snuba
         if "" in _envs:
             _envs.remove("")
             operator = "IS NULL" if search_filter.operator == "=" else "IS NOT NULL"
-            env_conditions.append(["tags[environment]", operator, None])
+            env_conditions.append(["environment", operator, None])
 
         if _envs:
-            env_conditions.append(["tags[environment]", "IN", list(_envs)])
+            env_conditions.append(["environment", "IN", list(_envs)])
 
         return env_conditions
 
@@ -803,7 +803,7 @@ def resolve_field_list(fields, snuba_args):
     }
 
 
-def find_reference_event(snuba_args, reference_event_slug):
+def find_reference_event(snuba_args, reference_event_slug, fields):
     try:
         project_slug, event_id = reference_event_slug.split(":")
     except ValueError:
@@ -814,14 +814,17 @@ def find_reference_event(snuba_args, reference_event_slug):
         )
     except Project.DoesNotExist:
         raise InvalidSearchQuery("Invalid reference event")
-    reference_event = eventstore.get_event_by_id(project.id, event_id, eventstore.full_columns)
+    reference_event = eventstore.get_event_by_id(project.id, event_id, fields)
     if not reference_event:
         raise InvalidSearchQuery("Invalid reference event")
 
-    return reference_event
+    return reference_event.snuba_data
 
 
-def get_reference_event_conditions(snuba_args, reference_event):
+TAG_KEY_RE = re.compile(r"^tags\[(.*)\]$")
+
+
+def get_reference_event_conditions(snuba_args, event_slug):
     """
     Returns a list of additional conditions/filter_keys to
     scope a query by the groupby fields using values from the reference event
@@ -829,15 +832,39 @@ def get_reference_event_conditions(snuba_args, reference_event):
     This is a key part of pagination in the event details modal and
     summary graph navigation.
     """
-    conditions = []
+    field_names = [get_snuba_column_name(field) for field in snuba_args.get("groupby", [])]
+    # translate the field names into enum columns
+    columns = []
+    has_tags = False
+    for field in field_names:
+        if field.startswith("tags["):
+            has_tags = True
+        else:
+            columns.append(eventstore.Columns(field))
 
-    # If we were given an project/event to use build additional
-    # conditions using that event and the non-aggregated columns
-    # we received in the querystring. This lets us find the oldest/newest.
-    # This only handles simple fields on the snuba_data dict.
-    for field in snuba_args.get("groupby", []):
-        prop = get_snuba_column_name(field)
-        value = reference_event.get(prop, None)
+    if has_tags:
+        columns.extend([eventstore.Columns.TAGS_KEY, eventstore.Columns.TAGS_VALUE])
+
+    # Fetch the reference event ensuring the fields in the groupby
+    # clause are present.
+    event_data = find_reference_event(snuba_args, event_slug, columns)
+
+    conditions = []
+    tags = {}
+    if "tags.key" in event_data and "tags.value" in event_data:
+        tags = dict(zip(event_data["tags.key"], event_data["tags.value"]))
+
+    for field in field_names:
+        match = TAG_KEY_RE.match(field)
+        if match:
+            value = tags.get(match.group(1), None)
+        else:
+            value = event_data.get(field, None)
+            # If the value is a sequence use the first element as snuba
+            # doesn't support `=` or `IN` operations on fields like exception_frames.filename
+            if isinstance(value, (list, set)) and value:
+                value = value.pop()
         if value:
-            conditions.append([prop, "=", value])
+            conditions.append([field, "=", value])
+
     return conditions

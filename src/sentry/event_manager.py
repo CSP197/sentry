@@ -1,8 +1,10 @@
 from __future__ import absolute_import, print_function
 
-import time
-import jsonschema
 import logging
+import time
+
+import ipaddress
+import jsonschema
 import six
 
 from datetime import datetime, timedelta
@@ -880,12 +882,20 @@ class EventManager(object):
         if not user_data:
             return
 
+        ip_address = user_data.get("ip_address")
+
+        if ip_address:
+            try:
+                ipaddress.ip_address(six.text_type(ip_address))
+            except ValueError:
+                ip_address = None
+
         euser = EventUser(
             project_id=project.id,
             ident=user_data.get("id"),
             email=user_data.get("email"),
             username=user_data.get("username"),
-            ip_address=user_data.get("ip_address"),
+            ip_address=ip_address,
             name=user_data.get("name"),
         )
         euser.set_hash()
